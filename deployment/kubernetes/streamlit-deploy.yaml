@@ -19,6 +19,7 @@ spec:
     spec:
       containers:
       - image: joevisco/streamlit:v2
+        imagePullPolicy: Always
         name: streamlit
         ports:
         - containerPort: 8501
