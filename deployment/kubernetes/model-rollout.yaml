@@ -1,0 +1,37 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: model
+  namespace: default
+  labels:
+    app: model
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: model
+  template:
+    metadata:
+      labels:
+        app: model
+    spec:
+      containers:
+      - name: house-pricemodel
+        image: joevisco/house-pricemodel:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 100m
+            memory: 128Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+  strategy:
+    blueGreen:
+      activeService: model-active
+      autoPromotionEnabled: true
+
+      
