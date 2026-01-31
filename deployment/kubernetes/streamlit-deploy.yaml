@@ -18,7 +18,7 @@ spec:
         app: streamlit
     spec:
       containers:
-      - image: joevisco/streamlit:v2
+      - image: joevisco/streamlit:latest
         imagePullPolicy: Always
         name: streamlit
         ports:
