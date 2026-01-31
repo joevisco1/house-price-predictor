@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from inference import predict_price, batch_predict
 from schemas import HousePredictionRequest, PredictionResponse
 from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_client import start_http_server
+import threading
 
 # Initialize FastAPI app with metadata
 app = FastAPI(
@@ -32,6 +34,14 @@ app.add_middleware(
 )
 
 Instrumentator().instrument(app).expose(app)
+
+# Start Prometheus metrics server on port 9100 in a background thread
+def start_metrics_server():
+    start_http_server(9100)
+
+threading.Thread(target=start_metrics_server, daemon=True).start()
+
+
 
 # Health check endpoint
 @app.get("/health", response_model=dict)
