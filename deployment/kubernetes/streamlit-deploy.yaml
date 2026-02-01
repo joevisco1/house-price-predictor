@@ -20,6 +20,7 @@ spec:
         name: streamlit
         ports:
         - containerPort: 8501
-        env:
-        - name: API_URL
-          value: "http://model-active:8000/predict"
+    env:
+      - name: API_URL
+        value: http://model-active:8000
+
