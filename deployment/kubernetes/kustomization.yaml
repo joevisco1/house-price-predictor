@@ -7,5 +7,4 @@ resources:
   - model-preview.yaml
   - streamlit-deploy.yaml
   - streamlit-svc.yaml
-  - fastapi-scaledobject.yaml
   - analysis-template.yaml

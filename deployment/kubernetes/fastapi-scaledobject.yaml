@@ -5,6 +5,8 @@ metadata:
   namespace: default
 spec:
   scaleTargetRef:
+    apiVersion: argoproj.io/v1alpha1
+    kind: Rollout
     name: model # update to your actual deployment name
   minReplicaCount: 1
   maxReplicaCount: 5
@@ -13,7 +15,7 @@ spec:
   triggers:
   - type: prometheus
     metadata:
-      serverAddress: http://prom-kube-prometheus-stack-prometheus.monitoring.svc:9090
+      serverAddress: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
       metricName: fast_api_latency_p95
       query: histogram_quantile(0.95,sum(rate(http_request_duration_seconds_bucket[1m])) by (le))
       threshold: "0.1"
