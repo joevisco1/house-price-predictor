@@ -2,6 +2,7 @@ import joblib
 import pandas as pd
 from datetime import datetime
 from schemas import HousePredictionRequest, PredictionResponse
+from drift import record_drift_metrics
 
 # Load model and preprocessor
 MODEL_PATH = "models/trained/house_price_model.pkl"
@@ -25,6 +26,7 @@ def predict_price(request: HousePredictionRequest) -> PredictionResponse:
 
     # Preprocess input data
     processed_features = preprocessor.transform(input_data)
+    record_drift_metrics(processed_features)
 
     # Make prediction
     predicted_price = model.predict(processed_features)[0]
