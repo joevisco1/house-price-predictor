@@ -13,7 +13,7 @@ st.set_page_config(
 )
 
 # Add title and description
-st.title("House Price Prediction - v2   🚀" )
+st.title("House Price Prediction - v2   🚀")
 st.markdown(
     """
     <p style="font-size: 18px; color: gray;">
@@ -45,13 +45,24 @@ with col1:
         st.markdown("<p><strong>Bathrooms</strong></p>", unsafe_allow_html=True)
         bathrooms = st.selectbox("", options=[1, 1.5, 2, 2.5, 3, 3.5, 4], index=2, label_visibility="collapsed")
 
-    # Location dropdown
+    # Location dropdown (API-aligned)
     st.markdown("<p><strong>Location</strong></p>", unsafe_allow_html=True)
-    location = st.selectbox("", options=["Urban", "Suburban", "Rural", "Urban", "Waterfront", "Mountain"], index=1, label_visibility="collapsed")
+    LOCATION_MAP = {
+        "Urban": "urban",
+        "Suburban": "suburban",
+        "Rural": "rural",
+    }
+    location_label = st.selectbox(
+        "",
+        options=list(LOCATION_MAP.keys()),
+        index=1,
+        label_visibility="collapsed"
+    )
+    location = LOCATION_MAP[location_label]
 
-    # Year Built slider
+    # Year Built slider (API max is 2023)
     st.markdown(f"<p><strong>Year Built:</strong> <span id='year-value'></span></p>", unsafe_allow_html=True)
-    year_built = st.slider("", 1900, 2025, 2000, 1, label_visibility="collapsed", key="year")
+    year_built = st.slider("", 1900, 2023, 2000, 1, label_visibility="collapsed", key="year")
     st.markdown(f"<script>document.getElementById('year-value').innerText = '{year_built}';</script>", unsafe_allow_html=True)
 
     # Predict button
@@ -68,12 +79,12 @@ with col2:
     if predict_button:
         # Show loading spinner
         with st.spinner("Calculating prediction..."):
-            # Prepare data for API call
+            # Prepare data for API call (API-aligned)
             api_data = {
                 "sqft": sqft,
                 "bedrooms": bedrooms,
                 "bathrooms": bathrooms,
-                "location": location.lower(),
+                "location": location,
                 "year_built": year_built,
                 "condition": "Good"
             }
