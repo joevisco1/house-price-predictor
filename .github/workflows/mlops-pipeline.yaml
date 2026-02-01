@@ -4,27 +4,28 @@ name: MLOps Pipeline
 on:
   workflow_dispatch:
     inputs:
-        run_all:
-                description: 'Run all jobs'
-                required: false
-                default: 'true'
-        run_data_processing:
-                description: 'Run data processing job'
-                required: false
-                default: 'true'
-        run_model_training:
-                description: 'Run model training job'
-                required: false
-                default: 'true'
-        run_build_and_publish:  
-                description: 'Run build and publish job'
-                required: false
-                default: 'true'
+      run_all:
+        description: "Run all jobs"
+        required: false
+        default: "true"
+      run_data_processing:
+        description: "Run data processing job"
+        required: false
+        default: "true"
+      run_model_training:
+        description: "Run model training job"
+        required: false
+        default: "true"
+      run_build_and_publish:
+        description: "Run build and publish job"
+        required: false
+        default: "true"
+
   release:
-    types: [ created ]
-    branches: [ main ]
-    tags: [ 'v*.*.*' ]
-    
+    types: [created]
+    branches: [main]
+    tags: ["v*.*.*"]
+
 jobs:
   data-processing:
     runs-on: ubuntu-latest
@@ -35,7 +36,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
-          python-version: '3.11.9'
+          python-version: "3.11.9"
 
       - name: Install dependencies
         run: |
@@ -77,7 +78,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
-          python-version: '3.11.9'
+          python-version: "3.11.9"
 
       - name: Install dependencies
         run: |
@@ -177,9 +178,6 @@ jobs:
             exit 1
           fi
 
-          # Optional: hit a predict endpoint if you have one
-          # curl -fsS http://localhost:8000/docs > /dev/null
-
       - name: Clean up Test Container
         if: always()
         run: |
@@ -194,10 +192,18 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push Docker image
+      - name: Build and push model image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: Dockerfile
           push: true
           tags: docker.io/${{ vars.DOCKERHUB_USERNAME }}/house-pricemodel:latest
+
+      - name: Build and push Streamlit image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./streamlit_app
+          file: ./streamlit_app/dockerfile
+          push: true
+          tags: docker.io/${{ vars.DOCKERHUB_USERNAME }}/streamlit:latest
