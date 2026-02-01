@@ -1,0 +1,74 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: model-gate-latency-errors
+  namespace: default
+spec:
+  args:
+  - name: namespace
+    value: default
+  - name: service
+    value: model-preview
+
+  metrics:
+  - name: p95-latency-seconds
+    interval: 30s
+    count: 5
+    failureLimit: 1
+    provider:
+      prometheus:
+        address: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
+        query: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (
+              rate(http_request_duration_seconds_bucket{
+                namespace="{{args.namespace}}",
+                service="{{args.service}}"
+              }[2m])
+            )
+          ) or on() vector(0)
+    successCondition: result[0] < 0.50
+
+  - name: http-5xx-rate
+    interval: 30s
+    count: 5
+    failureLimit: 1
+    provider:
+      prometheus:
+        address: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
+        query: |
+          (
+            sum(rate(http_requests_total{
+              namespace="{{args.namespace}}",
+              service="{{args.service}}",
+              status=~"5.."
+            }[2m]))
+            /
+            clamp_min(
+              sum(rate(http_requests_total{
+                namespace="{{args.namespace}}",
+                service="{{args.service}}"
+              }[2m])),
+              1
+            )
+          ) or on() vector(0)
+    successCondition: result[0] < 0.01
+
+  - name: min-rps
+    interval: 30s
+    count: 5
+    failureLimit: 1
+    provider:
+      prometheus:
+        address: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
+        query: |
+          sum(rate(http_requests_total{
+            namespace="{{args.namespace}}",
+            service="{{args.service}}"
+          }[2m])) or on() vector(0)
+    # choose ONE of these:
+    # strict:
+    # successCondition: result[0] >= 0.1
+    # allow zero-traffic:
+    successCondition: result[0] == 0 || result[0] >= 0.1

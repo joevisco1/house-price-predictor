@@ -16,22 +16,37 @@ spec:
         app: model
     spec:
       containers:
-      - name: house-pricemodel
-        image: joevisco/house-pricemodel:latest
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 8000
-          protocol: TCP
-        resources:
-          limits:
-            cpu: 100m
-            memory: 128Mi
-          requests:
-            cpu: 50m
-            memory: 64Mi
+        - name: house-pricemodel
+          image: joevisco/house-pricemodel:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+              protocol: TCP
+          resources:
+            limits:
+              cpu: 100m
+              memory: 128Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+
   strategy:
     blueGreen:
       activeService: model-active
-      autoPromotionEnabled: true
+      previewService: model-preview
 
+      # If you want analysis to gate promotion, set this false.
+      # If you keep it true, promotion will proceed automatically after analysis passes.
+      autoPromotionEnabled: false
+
+      prePromotionAnalysis:
+        templates:
+          - templateName: model-gate-latency-errors
+        args:
+          - name: namespace
+            value: default
+          - name: service
+            value: model-preview
+          - name: job
+            value: model-preview
       

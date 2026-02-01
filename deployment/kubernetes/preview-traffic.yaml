@@ -1,0 +1,24 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: preview-traffic
+  namespace: default
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 60
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: curl
+        image: curlimages/curl:8.5.0
+        command:
+        - sh
+        - -c
+        - |
+          echo "Sending traffic to model-preview..."
+          for i in $(seq 1 240); do
+            curl -s http://model-preview.default.svc.cluster.local:8000/health || true
+            sleep 0.5
+          done
+          echo "Done."
