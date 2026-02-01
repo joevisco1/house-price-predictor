@@ -1,7 +1,6 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  creationTimestamp: null
   labels:
     app: streamlit
   name: streamlit
@@ -10,10 +9,8 @@ spec:
   selector:
     matchLabels:
       app: streamlit
-  strategy: {}
   template:
     metadata:
-      creationTimestamp: null
       labels:
         app: streamlit
     spec:
@@ -23,5 +20,6 @@ spec:
         name: streamlit
         ports:
         - containerPort: 8501
-        resources: {}
-status: {}
+        env:
+        - name: API_URL
+          value: "http://model-active:8000/predict"
