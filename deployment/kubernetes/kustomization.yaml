@@ -8,3 +8,4 @@ resources:
   - streamlit-deploy.yaml
   - streamlit-svc.yaml
   - analysis-template.yaml
+  - model-servicemonitor.yaml

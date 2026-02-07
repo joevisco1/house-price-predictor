@@ -34,9 +34,6 @@ spec:
     blueGreen:
       activeService: model-active
       previewService: model-preview
-
-      # If you want analysis to gate promotion, set this false.
-      # If you keep it true, promotion will proceed automatically after analysis passes.
       autoPromotionEnabled: false
 
       prePromotionAnalysis:

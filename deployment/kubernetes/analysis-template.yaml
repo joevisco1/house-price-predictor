@@ -67,8 +67,4 @@ spec:
             namespace="{{args.namespace}}",
             service="{{args.service}}"
           }[2m])) or on() vector(0)
-    # choose ONE of these:
-    # strict:
-    # successCondition: result[0] >= 0.1
-    # allow zero-traffic:
     successCondition: result[0] == 0 || result[0] >= 0.1

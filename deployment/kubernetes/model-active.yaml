@@ -5,18 +5,19 @@ metadata:
   namespace: default
   labels:
     app: model
+    role: active
 spec:
   type: NodePort
   selector:
     app: model
   ports:
-  - name: http
-    port: 8000
-    targetPort: 8000
-    nodePort: 30100
-    protocol: TCP
-  - name: metrics
-    port: 9100
-    targetPort: 9100
-    nodePort: 30521
-    protocol: TCP
+    - name: http
+      port: 8000
+      targetPort: 8000
+      nodePort: 30100
+      protocol: TCP
+    - name: metrics
+      port: 9100
+      targetPort: 9100
+      nodePort: 30521
+      protocol: TCP

@@ -40,3 +40,14 @@ dist/
 # Ignore all .pkl files (models, preprocessors, etc.)
 *.pkl
 
+# Generated / rendered manifests
+rendered.yaml
+
+# Local Kubernetes tooling
+k8s-code/
+kube-ops-view/
+metrics-server/
+
+# Autoscaling experiments
+deployment/monitoring/autoscaler/
+
