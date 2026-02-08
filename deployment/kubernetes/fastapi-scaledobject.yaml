@@ -7,19 +7,40 @@ spec:
   scaleTargetRef:
     apiVersion: argoproj.io/v1alpha1
     kind: Rollout
-    name: model # update to your actual deployment name
+    name: model
   minReplicaCount: 1
   maxReplicaCount: 5
-  pollingInterval: 30 # seconds
-  cooldownPeriod: 300 # seconds before scaling down
+  pollingInterval: 30
+  cooldownPeriod: 300
   triggers:
-  - type: prometheus
-    metadata:
-      serverAddress: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
-      metricName: fast_api_latency_p95
-      query: histogram_quantile(0.95,sum(rate(http_request_duration_seconds_bucket[1m])) by (le))
-      threshold: "0.1"
-  - type: cpu
-    metricType: Utilization   # Allowed: Utilization | AverageValue
-    metadata:
-      value: "50" # Scales when average CPU usage > 50%
+    - type: prometheus
+      metadata:
+        metricName: fast_api_latency_p95_predict
+        serverAddress: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
+        threshold: "0.12"
+        query: >
+          (
+            histogram_quantile(
+              0.95,
+              sum by (le) (
+                rate(http_request_duration_seconds_bucket{
+                  namespace="default",
+                  job="model-active",
+                  handler="/predict"
+                }[5m])
+              )
+            )
+          )
+          and on()
+          (
+            sum(rate(http_request_duration_seconds_count{
+              namespace="default",
+              job="model-active",
+              handler="/predict"
+            }[5m])) > 0
+          )
+          or on() vector(0)
+    - type: cpu
+      metricType: Utilization
+      metadata:
+        value: "50"

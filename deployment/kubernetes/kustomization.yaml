@@ -9,3 +9,4 @@ resources:
   - streamlit-svc.yaml
   - analysis-template.yaml
   - model-servicemonitor.yaml
+  - fastapi-scaledobject.yaml
