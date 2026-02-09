@@ -1,0 +1,8 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: model-gate-latency-errors
+spec:
+  args:
+  - name: namespace
+    value: model-staging
