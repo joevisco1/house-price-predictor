@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: house-price-prod
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:joevisco1/house-price-predictor.git
+    targetRevision: main
+    path: deployment/gitops/overlays/prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: model-prod
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true

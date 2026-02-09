@@ -10,8 +10,10 @@ commonLabels:
 
 namespace: model-prod
 
-patchesStrategicMerge:
-  - patch-rollout-podlabels.yaml
-  - patch-analysis-namespace.yaml
-  - patch-analysistemplate-args.yaml
-  - patch-servicemonitor-namespace.yaml
+patches:
+  - path: patch-rollout-podlabels.yaml
+  - path: patch-analysis-namespace.yaml
+  - path: patch-analysistemplate-args.yaml
+  - path: patch-servicemonitor-namespace.yaml
+  - path: patch-service-active-env.yaml
+  - path: patch-service-preview-env.yaml
