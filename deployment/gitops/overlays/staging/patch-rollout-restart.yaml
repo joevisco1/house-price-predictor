@@ -1,0 +1,9 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: model
+spec:
+  template:
+    metadata:
+      annotations:
+        gitops/restartAt: "2026-02-09T00:00:00Z"
