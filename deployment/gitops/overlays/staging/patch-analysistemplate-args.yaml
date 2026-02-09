@@ -1,8 +1,13 @@
 apiVersion: argoproj.io/v1alpha1
-kind: AnalysisTemplate
+kind: Rollout
 metadata:
-  name: model-gate-latency-errors
+  name: model
 spec:
-  args:
-  - name: namespace
-    value: model-staging
+  strategy:
+    blueGreen:
+      prePromotionAnalysis:
+        args:
+          - name: namespace
+            value: model-staging
+          - name: service
+            value: model-active
