@@ -1,15 +1,11 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-
 resources:
   - namespace.yaml
   - ../../base/model
-
 commonLabels:
   env: staging
-
 namespace: model-staging
-
 patches:
   - path: patch-rollout-podlabels.yaml
   - path: patch-analysis-namespace.yaml
@@ -18,7 +14,6 @@ patches:
   - path: patch-service-active-env.yaml
   - path: patch-service-preview-env.yaml
   - path: patch-rollout-restart.yaml
-
 images:
   - name: docker.io/joevisco/house-pricemodel
-    newTag: sha-INITIAL
+    newTag: sha-5c2fccc
