@@ -6,7 +6,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: git@github.com:joevisco1/house-price-predictor.git
+    repoURL: https://github.com/joevisco1/house-price-predictor.git
     targetRevision: main
     path: deployment/gitops/overlays/prod
   destination:
