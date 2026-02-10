@@ -2,7 +2,6 @@ apiVersion: argoproj.io/v1alpha1
 kind: Rollout
 metadata:
   name: model
-  namespace: default
   labels:
     app: model
 spec:
@@ -17,7 +16,7 @@ spec:
     spec:
       containers:
         - name: house-pricemodel
-          image: joevisco/house-pricemodel:latest
+          image: docker.io/joevisco/house-pricemodel:sha-INITIAL
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
@@ -41,7 +40,7 @@ spec:
           - templateName: model-gate-latency-errors
         args:
           - name: namespace
-            value: default
+            value: PLACEHOLDER_NAMESPACE
           - name: service
             value: model-preview
           - name: job
