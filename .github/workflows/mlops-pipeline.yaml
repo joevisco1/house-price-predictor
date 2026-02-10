@@ -26,6 +26,15 @@ on:
     branches: [main]
     tags: ["v*.*.*"]
 
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  # Must match your kustomization.yaml images.name EXACTLY (literal string)
+  MODEL_IMAGE: docker.io/joevisco/house-pricemodel
+  STREAMLIT_IMAGE: docker.io/joevisco/streamlit
+
 jobs:
   data-processing:
     runs-on: ubuntu-latest
@@ -148,15 +157,19 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and test Docker image
+      # Compute the deployable tag ONCE and use it everywhere
+      - name: Compute image tag (short sha)
+        id: img
+        run: echo "tag=sha-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+      - name: Build and test Docker image (same tag you deploy)
         run: |
           set -euo pipefail
 
-          COMMIT_HASH=$(echo "${{ github.sha }}" | cut -c1-7)
-          IMAGE="docker.io/${{ vars.DOCKERHUB_USERNAME }}/house-pricemodel:${COMMIT_HASH}"
+          TAG="${{ steps.img.outputs.tag }}"
+          IMAGE="${MODEL_IMAGE}:${TAG}"
 
           docker build -t "$IMAGE" -f Dockerfile .
-
           docker run -d -p 8000:8000 --name test-api "$IMAGE"
 
           echo "Waiting for API to become healthy..."
@@ -198,7 +211,9 @@ jobs:
           context: .
           file: Dockerfile
           push: true
-          tags: docker.io/${{ vars.DOCKERHUB_USERNAME }}/house-pricemodel:latest
+          tags: |
+            ${{ env.MODEL_IMAGE }}:${{ steps.img.outputs.tag }}
+            ${{ env.MODEL_IMAGE }}:latest
 
       - name: Build and push Streamlit image
         uses: docker/build-push-action@v5
@@ -206,4 +221,27 @@ jobs:
           context: ./streamlit_app
           file: ./streamlit_app/dockerfile
           push: true
-          tags: docker.io/${{ vars.DOCKERHUB_USERNAME }}/streamlit:latest
+          tags: |
+            ${{ env.STREAMLIT_IMAGE }}:${{ steps.img.outputs.tag }}
+            ${{ env.STREAMLIT_IMAGE }}:latest
+
+      - name: Update staging kustomization tag (model only)
+        uses: mikefarah/yq@v4.44.1
+        with:
+          cmd: |
+            yq -i '
+              (.images[] | select(.name == strenv(MODEL_IMAGE)) | .newTag) = "${{ steps.img.outputs.tag }}"
+            ' deployment/gitops/overlays/staging/kustomization.yaml
+
+      - name: Create PR for staging deploy
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: gitops/staging-${{ steps.img.outputs.tag }}
+          branch-suffix: timestamp
+          delete-branch: true
+          title: "staging: deploy ${{ steps.img.outputs.tag }}"
+          commit-message: "staging: deploy ${{ steps.img.outputs.tag }}"
+          body: |
+            Deploy ${{ steps.img.outputs.tag }} to staging preview.
+          base: main
