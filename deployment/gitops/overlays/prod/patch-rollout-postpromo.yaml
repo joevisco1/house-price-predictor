@@ -5,7 +5,11 @@ metadata:
 spec:
   strategy:
     blueGreen:
-      prePromotionAnalysis:
-        args:
+      postPromotionAnalysis:
+        templates:
+        - templateName: slo-post
+          args:
           - name: namespace
             value: model-prod
+          - name: service
+            value: model-active

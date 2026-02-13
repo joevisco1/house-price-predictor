@@ -1,0 +1,11 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: model
+spec:
+  template:
+    metadata:
+      labels:
+        env: prod
+      annotations:
+        gitops/restartAt: "2026-02-13T15:00:00Z"

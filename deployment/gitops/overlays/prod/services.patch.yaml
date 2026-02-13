@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: model-active
+spec:
+  selector:
+    env: prod
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: model-preview
+spec:
+  selector:
+    env: prod
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: model
+  namespace: model-prod
