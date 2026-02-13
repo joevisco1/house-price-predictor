@@ -16,4 +16,4 @@ patches:
   - path: patch-rollout-restart.yaml
 images:
   - name: docker.io/joevisco/house-pricemodel
-    newTag: sha-5d57ff2
+    newTag: sha-062ccb6
