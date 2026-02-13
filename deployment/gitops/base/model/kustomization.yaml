@@ -8,3 +8,5 @@ resources:
   - model-servicemonitor.yaml
   - analysis-template.yaml
   - fastapi-scaledobject.yaml
+  - pdb.yaml
+  - analysistemplate-slo-post.yaml

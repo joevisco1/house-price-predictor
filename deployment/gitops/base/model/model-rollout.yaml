@@ -2,47 +2,92 @@ apiVersion: argoproj.io/v1alpha1
 kind: Rollout
 metadata:
   name: model
-  labels:
-    app: model
 spec:
   replicas: 2
+
   selector:
     matchLabels:
       app: model
+
   template:
     metadata:
       labels:
         app: model
     spec:
+      terminationGracePeriodSeconds: 30
+
       containers:
-        - name: house-pricemodel
-          image: docker.io/joevisco/house-pricemodel:sha-INITIAL
-          imagePullPolicy: Always
+        - name: model
+          image: docker.io/joevisco/house-pricemodel
           ports:
             - containerPort: 8000
-              protocol: TCP
+            - containerPort: 9100
+
           resources:
-            limits:
-              cpu: 100m
-              memory: 128Mi
             requests:
-              cpu: 50m
-              memory: 64Mi
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+
+          lifecycle:
+            preStop:
+              httpGet:
+                path: /health/drain
+                port: 8000
+
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          startupProbe:
+            httpGet:
+              path: /health/startup
+              port: 8000
+            failureThreshold: 30
+            periodSeconds: 2
 
   strategy:
     blueGreen:
       activeService: model-active
       previewService: model-preview
+
       autoPromotionEnabled: false
 
       prePromotionAnalysis:
-        templates:
-          - templateName: model-gate-latency-errors
         args:
           - name: namespace
-            value: PLACEHOLDER_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
           - name: service
             value: model-preview
-          - name: job
-            value: model-preview
-      
+        templates:
+          - templateName: model-gate-latency-errors
+
+      postPromotionAnalysis:
+        args:
+          - name: namespace
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: service
+            value: model-active
+        templates:
+          - templateName: model-gate-latency-errors
+

@@ -2,7 +2,7 @@ apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
   name: fastapi-latency-autoscaler
-  namespace: default
+  # REMOVE: namespace: default
 spec:
   scaleTargetRef:
     apiVersion: argoproj.io/v1alpha1
@@ -24,7 +24,7 @@ spec:
               0.95,
               sum by (le) (
                 rate(http_request_duration_seconds_bucket{
-                  namespace="default",
+                  namespace="REPLACE_ME",
                   job="model-active",
                   handler="/predict"
                 }[5m])
@@ -34,7 +34,7 @@ spec:
           and on()
           (
             sum(rate(http_request_duration_seconds_count{
-              namespace="default",
+              namespace="REPLACE_ME",
               job="model-active",
               handler="/predict"
             }[5m])) > 0

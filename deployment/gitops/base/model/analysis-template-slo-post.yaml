@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: slo-post
+spec:
+  args:
+  - name: namespace
+  - name: service
+  metrics:
+  - name: http-5xx-rate
+    interval: 30s
+    count: 10
+    successCondition: result[0] < 0.01
+    failureLimit: 1
+    provider:
+      prometheus:
+        address: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
+        query: |
+          sum(rate(http_requests_total{namespace="{{args.namespace}}",service="{{args.service}}",code=~"5.."}[2m]))
+          /
+          sum(rate(http_requests_total{namespace="{{args.namespace}}",service="{{args.service}}"}[2m]))

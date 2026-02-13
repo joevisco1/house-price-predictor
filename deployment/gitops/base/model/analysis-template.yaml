@@ -11,6 +11,7 @@ spec:
     value: model-preview
 
   metrics:
+
   - name: p95-latency-seconds
     interval: 30s
     count: 5
@@ -30,7 +31,8 @@ spec:
           ) or on() vector(0)
     successCondition: result[0] < 0.50
 
-  - name: http-5xx-rate
+
+  - name: http-error-rate
     interval: 30s
     count: 5
     failureLimit: 1
@@ -39,21 +41,25 @@ spec:
         address: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
         query: |
           (
-            sum(rate(http_requests_total{
-              namespace="{{args.namespace}}",
-              service="{{args.service}}",
-              status=~"5.."
-            }[2m]))
-            /
-            clamp_min(
+            1 -
+            (
               sum(rate(http_requests_total{
                 namespace="{{args.namespace}}",
-                service="{{args.service}}"
-              }[2m])),
-              1
+                service="{{args.service}}",
+                status="2xx"
+              }[2m]))
+              /
+              clamp_min(
+                sum(rate(http_requests_total{
+                  namespace="{{args.namespace}}",
+                  service="{{args.service}}"
+                }[2m])),
+                1
+              )
             )
           ) or on() vector(0)
     successCondition: result[0] < 0.01
+
 
   - name: min-rps
     interval: 30s
