@@ -48,6 +48,24 @@ threading.Thread(target=start_metrics_server, daemon=True).start()
 async def health_check():
     return {"status": "healthy", "model_loaded": True}
 
+# K8s probe endpoints expected by Rollout config
+@app.get("/health/startup")
+async def health_startup():
+    return {"status": "ok"}
+
+@app.get("/health/ready")
+async def health_ready():
+    return {"status": "ok"}
+
+@app.get("/health/live")
+async def health_live():
+    return {"status": "ok"}
+
+@app.get("/health/drain")
+async def health_drain():
+    return {"status": "ok"}
+
+
 # Prediction endpoint
 @app.post("/predict", response_model=PredictionResponse)
 async def predict(request: HousePredictionRequest):
