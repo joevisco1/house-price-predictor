@@ -6,4 +6,4 @@ spec:
   template:
     metadata:
       annotations:
-        gitops/restartAt: "2026-02-09T00:00:00Z"
+        gitops/restartAt: "2026-02-13T15:00:00Z"

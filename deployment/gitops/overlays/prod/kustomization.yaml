@@ -5,6 +5,10 @@ resources:
   - namespace.yaml
   - ../../base/model
 
+
+  - netpol-default-deny.yaml
+  - netpol-allow-dns.yaml
+
 commonLabels:
   env: prod
 
@@ -18,6 +22,9 @@ patches:
   - path: patch-service-active-env.yaml
   - path: patch-service-preview-env.yaml
   - path: patch-rollout-restart.yaml
+
+
+  - path: patch-scaledobject-prod-guardrails.yaml
 
 images:
   - name: docker.io/joevisco/house-pricemodel
