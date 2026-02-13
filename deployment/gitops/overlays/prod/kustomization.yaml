@@ -15,7 +15,8 @@ commonLabels:
 namespace: model-prod
 
 patches:
-  - path: rollout.patch.yaml
+  - path: patch-rollout-template.yaml
+  - path: patch-rollout-postpromo.yaml
   - path: patch-analysis-namespace.yaml
   - path: patch-analysistemplate-args.yaml
   - path: patch-servicemonitor-namespace.yaml
