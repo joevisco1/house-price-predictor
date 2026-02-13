@@ -15,15 +15,12 @@ commonLabels:
 namespace: model-prod
 
 patches:
-  - path: patch-rollout-podlabels.yaml
+  - path: rollout.patch.yaml
   - path: patch-analysis-namespace.yaml
   - path: patch-analysistemplate-args.yaml
   - path: patch-servicemonitor-namespace.yaml
   - path: patch-service-active-env.yaml
   - path: patch-service-preview-env.yaml
-  - path: patch-rollout-restart.yaml
-
-
   - path: patch-scaledobject-prod-guardrails.yaml
 
 images:
