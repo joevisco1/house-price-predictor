@@ -1,0 +1,30 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: fastapi-latency-autoscaler
+spec:
+  triggers:
+    - type: prometheus
+      metadata:
+        query: |
+          (
+            histogram_quantile(
+              0.95,
+              sum by (le) (
+                rate(http_request_duration_seconds_bucket{
+                  namespace="model-staging",
+                  job="model-active",
+                  handler="/predict"
+                }[5m])
+              )
+            )
+          )
+          and on()
+          (
+            sum(rate(http_request_duration_seconds_count{
+              namespace="model-staging",
+              job="model-active",
+              handler="/predict"
+            }[5m])) > 0
+          )
+          or on() vector(0)
