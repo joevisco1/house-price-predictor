@@ -3,9 +3,16 @@ kind: ScaledObject
 metadata:
   name: fastapi-latency-autoscaler
 spec:
+  minReplicaCount: 1
+  maxReplicaCount: 5
+  pollingInterval: 30
+  cooldownPeriod: 300
   triggers:
     - type: prometheus
       metadata:
+        serverAddress: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
+        metricName: fast_api_latency_p95_predict
+        threshold: "0.12"
         query: |
           (
             histogram_quantile(
@@ -28,3 +35,8 @@ spec:
             }[5m])) > 0
           )
           or on() vector(0)
+
+    - type: cpu
+      metricType: Utilization
+      metadata:
+        value: "50"
