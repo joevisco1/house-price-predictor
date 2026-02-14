@@ -3,6 +3,7 @@ kind: ScaledObject
 metadata:
   name: fastapi-latency-autoscaler
 spec:
+  minReplicaCount: 1
   triggers:
     - type: prometheus
       metadata:
