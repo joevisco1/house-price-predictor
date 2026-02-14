@@ -8,3 +8,13 @@ resources:
   - model-servicemonitor.yaml
   - analysis-template.yaml
   - fastapi-scaledobject.yaml
+patches:
+  - path: patch-rollout-pod-hardening.yaml
+  - path: patch-scaledobject-base-prom.yaml
+patchesJson6902:
+  - target:
+      group: keda.sh
+      version: v1alpha1
+      kind: ScaledObject
+      name: fastapi-latency-autoscaler
+    path: patch-scaled-object-remove-namespace.json

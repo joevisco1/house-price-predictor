@@ -1,0 +1,46 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: model
+spec:
+  template:
+    spec:
+      terminationGracePeriodSeconds: 40
+      containers:
+        - name: house-pricemodel
+
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - |
+                    # Best-effort drain: don't block termination if unavailable
+                    curl -fsS -X POST "http://127.0.0.1:8000/health/drain" || true
+                    sleep 5
+
+          startupProbe:
+            httpGet:
+              path: /health/ready
+              port: 8000
+            periodSeconds: 2
+            timeoutSeconds: 1
+            failureThreshold: 30  # ~60s total
+
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8000
+            periodSeconds: 5
+            timeoutSeconds: 1
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 1
+            failureThreshold: 3

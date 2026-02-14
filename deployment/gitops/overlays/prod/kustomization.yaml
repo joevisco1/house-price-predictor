@@ -18,6 +18,7 @@ patches:
   - path: patch-service-active-env.yaml
   - path: patch-service-preview-env.yaml
   - path: patch-rollout-restart.yaml
+  - path: patch-scaledobject-prod-guardrails.yaml
 
 images:
   - name: docker.io/joevisco/house-pricemodel
