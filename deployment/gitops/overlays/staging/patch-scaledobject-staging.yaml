@@ -3,10 +3,6 @@ kind: ScaledObject
 metadata:
   name: fastapi-latency-autoscaler
 spec:
-  minReplicaCount: 1
-  maxReplicaCount: 5
-  pollingInterval: 30
-  cooldownPeriod: 300
   triggers:
     - type: prometheus
       metadata:
