@@ -17,4 +17,4 @@ patches:
   - path: patch-scaledobject-staging.yaml
 images:
   - name: docker.io/joevisco/house-pricemodel
-    newTag: sha-ae04857
+    newTag: sha-5221c63
