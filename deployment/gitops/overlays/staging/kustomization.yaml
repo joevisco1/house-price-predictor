@@ -40,24 +40,3 @@ patches:
 images:
   - name: docker.io/joevisco/house-pricemodel
     newTag: sha-ae04857
-
-
-patches:
-  - target:
-      group: argoproj.io
-      version: v1alpha1
-      kind: Rollout
-      name: model
-    path: patch-rollout-force-revision.yaml
-  - target:
-      group: argoproj.io
-      version: v1alpha1
-      kind: Rollout
-      name: model
-    path: patch-rollout-env-selector.yaml
-  - target:
-      group: argoproj.io
-      version: v1alpha1
-      kind: Rollout
-      name: model
-    path: patch-rollout-analysis-namespace.yaml
