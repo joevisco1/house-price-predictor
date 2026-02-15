@@ -9,7 +9,7 @@ spec:
       count: 4
       provider:
         prometheus:
-          address: http://prometheus-kube-prometheus-prometheus.monitoring.svc:9090
+          address: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
           query: |
             histogram_quantile(
               0.95,
@@ -28,7 +28,7 @@ spec:
       count: 4
       provider:
         prometheus:
-          address: http://prometheus-kube-prometheus-prometheus.monitoring.svc:9090
+          address: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
           query: |
             sum(
               rate(http_request_duration_highr_seconds_count{
