@@ -15,7 +15,7 @@ spec:
       failureLimit: 2
       provider:
         prometheus:
-          address: http://prometheus-kube-prometheus-prometheus.monitoring:9090
+          address: http://prom-kube-prometheus-stack-prometheus.default:9090
           query: |
             histogram_quantile(
               0.95,
@@ -32,7 +32,7 @@ spec:
       failureLimit: 2
       provider:
         prometheus:
-          address: http://prometheus-kube-prometheus-prometheus.monitoring:9090
+          address: http://prom-kube-prometheus-stack-prometheus.default:9090
           query: |
             (
               sum(rate(http_requests_total{
@@ -57,7 +57,7 @@ spec:
       failureLimit: 2
       provider:
         prometheus:
-          address: http://prometheus-kube-prometheus-prometheus.monitoring:9090
+          address: http://prom-kube-prometheus-stack-prometheus.default:9090
           query: |
             sum(rate(http_requests_total{
               namespace="{{args.namespace}}",
