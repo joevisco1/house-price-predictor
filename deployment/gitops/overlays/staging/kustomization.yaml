@@ -12,17 +12,7 @@ configMapGenerator:
     literals:
       - NAMESPACE=model-staging
 
-replacements:
-  - source:
-      kind: ConfigMap
-      name: env-vars
-      fieldPath: data.NAMESPACE
-    targets:
-      - select:
-          kind: AnalysisTemplate
-          name: model-gate-latency-errors
-        fieldPaths:
-          - spec.args.[name=namespace].value
+
 patches:
   - path: patch-rollout-podlabels.yaml
   - path: patch-servicemonitor-namespace.yaml
@@ -30,11 +20,20 @@ patches:
   - path: patch-service-preview-env.yaml
   - path: patch-rollout-restart.yaml
   - target:
-      group: keda.sh
+      group: argoproj.io
       version: v1alpha1
-      kind: ScaledObject
-      name: fastapi-latency-autoscaler
-    path: patch-scaledobject-staging.yaml
+      kind: Rollout
+      name: model
+    path: patch-rollout-analysis-namespace.yaml
 images:
   - name: docker.io/joevisco/house-pricemodel
     newTag: sha-ae04857
+
+
+patches:
+  - target:
+      group: argoproj.io
+      version: v1alpha1
+      kind: Rollout
+      name: model
+    path: patch-rollout-analysis-namespace.yaml

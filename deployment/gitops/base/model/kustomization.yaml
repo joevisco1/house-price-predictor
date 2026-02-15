@@ -9,3 +9,4 @@ resources:
   - model-servicemonitor.yaml
   - analysis-template.yaml
   - fastapi-scaledobject.yaml
+  - analysistemplate-slo-post.yaml

@@ -45,4 +45,12 @@ spec:
             value: model-preview
           - name: job
             value: model-preview
-      
+
+      postPromotionAnalysis:
+        templates:
+          - templateName: model-post-slo-latency-errors
+        args:
+          - name: namespace
+            value: PLACEHOLDER_NAMESPACE
+          - name: service
+            value: model-active

@@ -1,0 +1,6 @@
+- op: replace
+  path: /spec/strategy/blueGreen/prePromotionAnalysis/args/0/value
+  value: model-staging
+- op: replace
+  path: /spec/strategy/blueGreen/postPromotionAnalysis/args/0/value
+  value: model-staging
