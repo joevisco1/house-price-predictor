@@ -10,3 +10,11 @@ resources:
   - analysis-template.yaml
   - fastapi-scaledobject.yaml
   - analysistemplate-slo-post.yaml
+
+patches:
+  - path: patch-rollout-restart.yaml
+    target:
+      group: argoproj.io
+      version: v1alpha1
+      kind: Rollout
+      name: model
