@@ -58,7 +58,8 @@ spec:
           restartPolicy: Never
           containers:
             - name: rollback
-              image: bitnami/kubectl:latest
+              # Use the Argo Rollouts kubectl plugin image so we can "undo" reliably
+              image: argoproj/kubectl-argo-rollouts:latest
               imagePullPolicy: IfNotPresent
               command:
                 - sh
@@ -72,7 +73,6 @@ spec:
                   HASH="$(kubectl -n "$NS" get rollout "$ROLLOUT" -o jsonpath='{.status.currentPodHash}' || true)"
 
                   # newest *post* AnalysisRun for THIS rollout + THIS hash
-                  # (avoid accidentally reading some other post run in the namespace)
                   POST_LINE="$(kubectl -n "$NS" get analysisrun \
                     -l app=model,rollout-type=PostPromotion,rollouts-pod-template-hash="$HASH" \
                     --sort-by=.metadata.creationTimestamp \
@@ -86,11 +86,10 @@ spec:
 
                   [ "$POST_PHASE" != "Failed" ] && exit 0
 
-                  echo "Detected failed post analysis ($POST_NAME) for hash=$HASH. Rolling back rollout/$ROLLOUT"
+                  echo "Detected failed post analysis ($POST_NAME) for hash=$HASH. Undoing rollout/$ROLLOUT"
 
-                  # Roll back to previous revision (revision 0 = previous)
-                  kubectl -n "$NS" patch rollout "$ROLLOUT" --type merge \
-                    -p '{"spec":{"rollbackTo":{"revision":0}}}'
+                  # Roll back to previous ReplicaSet / revision
+                  kubectl-argo-rollouts undo "$ROLLOUT" -n "$NS"
 
                   # Pause progression after rollback
                   kubectl -n "$NS" patch rollout "$ROLLOUT" --type merge \
