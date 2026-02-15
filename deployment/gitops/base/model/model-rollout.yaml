@@ -36,6 +36,8 @@ spec:
       previewService: model-preview
       autoPromotionEnabled: false
 
+      abortScaleDownDelaySeconds: 60
+
       prePromotionAnalysis:
         templates:
           - templateName: model-gate-latency-errors
