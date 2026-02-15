@@ -6,6 +6,6 @@ spec:
   template:
     metadata:
       annotations:
-        gitops/restartNonce: "3"
+        gitops/restartNonce: "4"
       labels:
         env: prod

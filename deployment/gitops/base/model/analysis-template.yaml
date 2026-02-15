@@ -18,13 +18,23 @@ spec:
       prometheus:
         address: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
         query: |
-          histogram_quantile(
-            0.95,
-            sum by (le) (
-              rate(http_request_duration_seconds_bucket{
+          (
+            histogram_quantile(
+              0.95,
+              sum by (le) (
+                rate(http_request_duration_seconds_bucket{
+                  namespace="{{args.namespace}}",
+                  service="{{args.service}}"
+                }[2m])
+              )
+            )
+            *
+            on() group_left()
+            (
+              sum(rate(http_request_duration_seconds_count{
                 namespace="{{args.namespace}}",
                 service="{{args.service}}"
-              }[2m])
+              }[2m])) > 0
             )
           ) or on() vector(0)
     successCondition: len(result) > 0 && result[0] < 0.50
