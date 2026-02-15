@@ -58,7 +58,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: rollback
-              image: bitnami/kubectl:1.29
+              image: bitnami/kubectl:latest
               imagePullPolicy: IfNotPresent
               command:
                 - sh

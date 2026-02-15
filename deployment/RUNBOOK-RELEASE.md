@@ -32,3 +32,8 @@
 
 Rollouts Wide View
 kubectl argo rollouts get rollout model -n model-prod -w
+
+Force Argo to Refresh
+
+kubectl -n argocd patch app house-price-prod --type merge \
+  -p '{"metadata":{"annotations":{"argocd.argoproj.io/refresh":"hard"}}}'
