@@ -59,7 +59,7 @@ spec:
           containers:
             - name: rollback
               # Use the Argo Rollouts kubectl plugin image so we can "undo" reliably
-              image: argoproj/kubectl-argo-rollouts:v1.7.0
+              image: quay.io/argoproj/kubectl-argo-rollouts:v1.7.0
               imagePullPolicy: IfNotPresent
               command:
                 - sh
