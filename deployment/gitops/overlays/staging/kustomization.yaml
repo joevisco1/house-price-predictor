@@ -30,7 +30,7 @@ patches:
   - path: patch-servicemonitor-namespace.yaml
   - path: patch-service-active-env.yaml
   - path: patch-service-preview-env.yaml
-  - path: patch-rollout-restart.yaml
+  - path: ../../base/model/patch-rollout-restart.yaml
   - target:
       group: argoproj.io
       version: v1alpha1
