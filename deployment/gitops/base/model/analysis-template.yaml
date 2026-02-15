@@ -2,11 +2,10 @@ apiVersion: argoproj.io/v1alpha1
 kind: AnalysisTemplate
 metadata:
   name: model-gate-latency-errors
-  namespace: default
 spec:
   args:
   - name: namespace
-    value: default
+    value: $(NAMESPACE)
   - name: service
     value: model-preview
 
