@@ -6,10 +6,25 @@ resources:
 commonLabels:
   env: staging
 namespace: model-staging
+configMapGenerator:
+  - name: env-vars
+    behavior: replace
+    literals:
+      - NAMESPACE=model-staging
+
+replacements:
+  - source:
+      kind: ConfigMap
+      name: env-vars
+      fieldPath: data.NAMESPACE
+    targets:
+      - select:
+          kind: AnalysisTemplate
+          name: model-gate-latency-errors
+        fieldPaths:
+          - spec.args.[name=namespace].value
 patches:
   - path: patch-rollout-podlabels.yaml
-  - path: patch-analysis-namespace.yaml
-  - path: patch-analysistemplate-args.yaml
   - path: patch-servicemonitor-namespace.yaml
   - path: patch-service-active-env.yaml
   - path: patch-service-preview-env.yaml
