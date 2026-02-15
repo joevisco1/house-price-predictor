@@ -43,8 +43,8 @@ metadata:
 spec:
   schedule: "*/1 * * * *"
   concurrencyPolicy: Forbid
-  successfulJobsHistoryLimit: 1
-  failedJobsHistoryLimit: 1
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
       backoffLimit: 0
@@ -68,20 +68,25 @@ spec:
                   NS="model-prod"
                   ROLLOUT="model"
 
-                  # newest post AnalysisRun for this rollout
+                  # Identify the rollout's current pod template hash (revision under evaluation)
+                  HASH="$(kubectl -n "$NS" get rollout "$ROLLOUT" -o jsonpath='{.status.currentPodHash}' || true)"
+
+                  # newest *post* AnalysisRun for THIS rollout + THIS hash
+                  # (avoid accidentally reading some other post run in the namespace)
                   POST_LINE="$(kubectl -n "$NS" get analysisrun \
+                    -l app=model,rollout-type=PostPromotion,rollouts-pod-template-hash="$HASH" \
                     --sort-by=.metadata.creationTimestamp \
                     -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.status.phase}{"\n"}{end}' \
-                    | grep -- '-post|' | tail -n 1 || true)"
+                    | tail -n 1 || true)"
 
-                  [ -z "$POST_LINE" ] && exit 0
+                  [ -z "${POST_LINE:-}" ] && exit 0
 
                   POST_NAME="$(echo "$POST_LINE" | cut -d'|' -f1)"
                   POST_PHASE="$(echo "$POST_LINE" | cut -d'|' -f2)"
 
                   [ "$POST_PHASE" != "Failed" ] && exit 0
 
-                  echo "Detected failed post analysis ($POST_NAME). Rolling back rollout/$ROLLOUT"
+                  echo "Detected failed post analysis ($POST_NAME) for hash=$HASH. Rolling back rollout/$ROLLOUT"
 
                   # Roll back to previous revision (revision 0 = previous)
                   kubectl -n "$NS" patch rollout "$ROLLOUT" --type merge \
