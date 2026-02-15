@@ -8,9 +8,6 @@ spec:
   selector:
     matchLabels:
       app: model
-  namespaceSelector:
-    matchNames:
-      - default
   endpoints:
     - port: metrics
       path: /metrics
