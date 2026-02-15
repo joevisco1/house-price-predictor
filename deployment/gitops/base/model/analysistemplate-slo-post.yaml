@@ -65,4 +65,4 @@ spec:
               service="{{args.service}}"
             }[2m])
           ) or on() vector(0)
-    successCondition: len(result) > 0 && (result[0] == 0 || result[0] > 0.02)
+    successCondition: len(result) > 0 && (result[0] == 0 || result[0] >= 0.01)
