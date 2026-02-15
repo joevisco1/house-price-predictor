@@ -19,12 +19,6 @@ patches:
       version: v1alpha1
       kind: Rollout
       name: model
-    path: patch-rollout-force-revision.yaml
-  - target:
-      group: argoproj.io
-      version: v1alpha1
-      kind: Rollout
-      name: model
     path: patch-rollout-env-selector.yaml
   - path: patch-rollout-podlabels.yaml
   - path: patch-servicemonitor-namespace.yaml

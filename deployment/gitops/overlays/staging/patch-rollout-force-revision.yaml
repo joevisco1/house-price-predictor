@@ -1,6 +1,0 @@
-- op: add
-  path: /spec/template/metadata/annotations
-  value: {}
-- op: replace
-  path: /spec/template/metadata/annotations/gitops~1forceRevision
-  value: "2026-02-15T19:55:00Z"
