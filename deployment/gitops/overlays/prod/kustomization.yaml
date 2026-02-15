@@ -4,6 +4,7 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - ../../base/model
+  - auto-rollback.yaml
 
 commonLabels:
   env: prod
@@ -16,7 +17,6 @@ configMapGenerator:
     literals:
       - NAMESPACE=model-prod
 
-
 patches:
   - target:
       group: argoproj.io
@@ -24,31 +24,19 @@ patches:
       kind: Rollout
       name: model
     path: patch-rollout-env-selector.yaml
+
+  - target:
+      group: argoproj.io
+      version: v1alpha1
+      kind: Rollout
+      name: model
+    path: patch-rollout-analysis-namespace.yaml
+
   - path: patch-rollout-podlabels.yaml
   - path: patch-servicemonitor-namespace.yaml
   - path: patch-service-active-env.yaml
   - path: patch-service-preview-env.yaml
-  - target:
-      group: argoproj.io
-      version: v1alpha1
-      kind: Rollout
-      name: model
-    path: patch-rollout-analysis-namespace.yaml
+
 images:
   - name: docker.io/joevisco/house-pricemodel
     newTag: sha-ae04857
-
-
-patches:
-  - target:
-      group: argoproj.io
-      version: v1alpha1
-      kind: Rollout
-      name: model
-    path: patch-rollout-env-selector.yaml
-  - target:
-      group: argoproj.io
-      version: v1alpha1
-      kind: Rollout
-      name: model
-    path: patch-rollout-analysis-namespace.yaml

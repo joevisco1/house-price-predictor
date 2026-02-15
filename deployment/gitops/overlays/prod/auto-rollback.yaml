@@ -1,0 +1,92 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rollout-auto-rollback
+  labels:
+    app: model
+    env: prod
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: rollout-auto-rollback
+  labels:
+    app: model
+    env: prod
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["rollouts", "analysisruns"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: rollout-auto-rollback
+  labels:
+    app: model
+    env: prod
+subjects:
+  - kind: ServiceAccount
+    name: rollout-auto-rollback
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: rollout-auto-rollback
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: model-auto-rollback
+  labels:
+    app: model
+    env: prod
+spec:
+  schedule: "*/1 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app: model
+            env: prod
+        spec:
+          serviceAccountName: rollout-auto-rollback
+          restartPolicy: Never
+          containers:
+            - name: rollback
+              image: bitnami/kubectl:1.29
+              imagePullPolicy: IfNotPresent
+              command:
+                - sh
+                - -lc
+                - |
+                  set -euo pipefail
+                  NS="model-prod"
+                  ROLLOUT="model"
+
+                  # newest post AnalysisRun for this rollout
+                  POST_LINE="$(kubectl -n "$NS" get analysisrun \
+                    --sort-by=.metadata.creationTimestamp \
+                    -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.status.phase}{"\n"}{end}' \
+                    | grep -- '-post|' | tail -n 1 || true)"
+
+                  [ -z "$POST_LINE" ] && exit 0
+
+                  POST_NAME="$(echo "$POST_LINE" | cut -d'|' -f1)"
+                  POST_PHASE="$(echo "$POST_LINE" | cut -d'|' -f2)"
+
+                  [ "$POST_PHASE" != "Failed" ] && exit 0
+
+                  echo "Detected failed post analysis ($POST_NAME). Rolling back rollout/$ROLLOUT"
+
+                  # Roll back to previous revision (revision 0 = previous)
+                  kubectl -n "$NS" patch rollout "$ROLLOUT" --type merge \
+                    -p '{"spec":{"rollbackTo":{"revision":0}}}'
+
+                  # Pause progression after rollback
+                  kubectl -n "$NS" patch rollout "$ROLLOUT" --type merge \
+                    -p '{"spec":{"paused":true}}' || true
