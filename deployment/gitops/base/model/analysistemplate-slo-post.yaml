@@ -11,7 +11,8 @@ spec:
     - name: p95-latency
       interval: 30s
       count: 10
-      successCondition: result[0] < 0.25
+      # guard empty vector
+      successCondition: len(result) > 0 && result[0] < 0.25
       failureLimit: 2
       provider:
         prometheus:
@@ -28,7 +29,7 @@ spec:
     - name: error-rate-5xx
       interval: 30s
       count: 10
-      successCondition: result[0] < 0.05
+      successCondition: len(result) > 0 && result[0] < 0.05
       failureLimit: 2
       provider:
         prometheus:
@@ -53,7 +54,7 @@ spec:
     - name: min-rps-floor
       interval: 30s
       count: 10
-      successCondition: result[0] > 0.2
+      successCondition: len(result) > 0 && result[0] > 0.2
       failureLimit: 2
       provider:
         prometheus:

@@ -27,7 +27,7 @@ spec:
               }[2m])
             )
           ) or on() vector(0)
-    successCondition: result[0] < 0.50
+    successCondition: len(result) > 0 && result[0] < 0.50
 
   - name: http-5xx-rate
     interval: 30s
@@ -52,7 +52,7 @@ spec:
               1
             )
           ) or on() vector(0)
-    successCondition: result[0] < 0.01
+    successCondition: len(result) > 0 && result[0] < 0.01
 
   - name: min-rps
     interval: 30s
@@ -66,4 +66,4 @@ spec:
             namespace="{{args.namespace}}",
             service="{{args.service}}"
           }[2m])) or on() vector(0)
-    successCondition: result[0] == 0 || result[0] >= 0.1
+    successCondition: len(result) > 0 && (result[0] == 0 || result[0] >= 0.1))
