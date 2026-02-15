@@ -2,9 +2,10 @@ apiVersion: argoproj.io/v1alpha1
 kind: Rollout
 metadata:
   name: model
-  namespace: default
 spec:
   template:
     metadata:
+      annotations:
+        gitops/restartNonce: "0"
       labels:
         env: prod
