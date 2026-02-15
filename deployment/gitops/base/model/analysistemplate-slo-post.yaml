@@ -20,36 +20,42 @@ spec:
           query: |
             histogram_quantile(
               0.95,
-              sum(rate(http_request_duration_seconds_bucket{
-                namespace="{{args.namespace}}",
-                service="{{args.service}}"
-              }[2m])) by (le)
+              sum by (le) (
+                rate(http_request_duration_highr_seconds_bucket{
+                  namespace="{{args.namespace}}",
+                  service="{{args.service}}"
+                }[2m])
+              )
             )
 
-    - name: error-rate-5xx
-      interval: 30s
-      count: 10
-      successCondition: len(result) > 0 && result[0] < 0.05
-      failureLimit: 2
-      provider:
-        prometheus:
-          address: http://prom-kube-prometheus-stack-prometheus.default:9090
-          query: |
-            (
-              sum(rate(http_requests_total{
-                namespace="{{args.namespace}}",
-                service="{{args.service}}",
-                status=~"5.."
-              }[2m]))
-            )
-            /
-            clamp_min(
-              sum(rate(http_requests_total{
-                namespace="{{args.namespace}}",
-                service="{{args.service}}"
-              }[2m])),
-              0.001
-            )
+    # NOTE: disabled because your scraped app metrics do NOT include a status-labeled
+    # http_requests_total (or equivalent). Leaving this enabled will return empty vectors
+    # and can fail or behave unpredictably.
+    #
+    # - name: error-rate-5xx
+    #   interval: 30s
+    #   count: 10
+    #   successCondition: len(result) > 0 && result[0] < 0.05
+    #   failureLimit: 2
+    #   provider:
+    #     prometheus:
+    #       address: http://prom-kube-prometheus-stack-prometheus.default:9090
+    #       query: |
+    #         (
+    #           sum(rate(http_requests_total{
+    #             namespace="{{args.namespace}}",
+    #             service="{{args.service}}",
+    #             status=~"5.."
+    #           }[2m]))
+    #         )
+    #         /
+    #         clamp_min(
+    #           sum(rate(http_requests_total{
+    #             namespace="{{args.namespace}}",
+    #             service="{{args.service}}"
+    #           }[2m])),
+    #           0.001
+    #         )
 
     - name: min-rps-floor
       interval: 30s
@@ -60,7 +66,9 @@ spec:
         prometheus:
           address: http://prom-kube-prometheus-stack-prometheus.default:9090
           query: |
-            sum(rate(http_requests_total{
-              namespace="{{args.namespace}}",
-              service="{{args.service}}"
-            }[2m]))
+            sum(
+              rate(http_request_duration_highr_seconds_count{
+                namespace="{{args.namespace}}",
+                service="{{args.service}}"
+              }[2m])
+            )
