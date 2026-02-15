@@ -48,7 +48,7 @@ spec:
 
       postPromotionAnalysis:
         templates:
-          - templateName: model-post-slo-latency-errors
+          - templateName: model-slo-post
         args:
           - name: namespace
             value: PLACEHOLDER_NAMESPACE
