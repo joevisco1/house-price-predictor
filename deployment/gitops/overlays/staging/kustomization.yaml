@@ -14,6 +14,12 @@ configMapGenerator:
 
 
 patches:
+  - target:
+      group: argoproj.io
+      version: v1alpha1
+      kind: Rollout
+      name: model
+    path: patch-rollout-env-selector.yaml
   - path: patch-rollout-podlabels.yaml
   - path: patch-servicemonitor-namespace.yaml
   - path: patch-service-active-env.yaml
@@ -31,6 +37,12 @@ images:
 
 
 patches:
+  - target:
+      group: argoproj.io
+      version: v1alpha1
+      kind: Rollout
+      name: model
+    path: patch-rollout-env-selector.yaml
   - target:
       group: argoproj.io
       version: v1alpha1
