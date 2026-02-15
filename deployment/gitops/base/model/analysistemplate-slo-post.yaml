@@ -15,7 +15,7 @@ spec:
               0.95,
               sum by (le) (
                 rate(http_request_duration_highr_seconds_bucket{
-                  namespace="model-prod",
+                  namespace="{{args.namespace}}",
                   service=~"model-active|model-preview"
                 }[2m])
               )
@@ -32,7 +32,7 @@ spec:
           query: |
             sum(
               rate(http_request_duration_highr_seconds_count{
-                namespace="model-prod",
+                namespace="{{args.namespace}}",
                 service=~"model-active|model-preview"
               }[2m])
             ) or on() vector(0)
