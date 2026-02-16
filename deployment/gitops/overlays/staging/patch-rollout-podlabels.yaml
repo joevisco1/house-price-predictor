@@ -3,6 +3,10 @@ kind: Rollout
 metadata:
   name: model
 spec:
+  strategy:
+    blueGreen:
+      autoPromotionEnabled: true
+
   template:
     metadata:
       annotations:
