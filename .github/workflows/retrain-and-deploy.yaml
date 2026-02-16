@@ -23,14 +23,20 @@ jobs:
 
       - name: Install deps
         run: pip install -r requirements.txt
+      
+      - name: Prepare dataset
+        run: |
+          python src/data/run_processing.py
 
       - name: Train model
         run: |
-          python src/models/train_model.py \
-            --config configs/model_config.yaml \
-            --data data/processed \
-            --models-dir models/trained
-
+            DATA_FILE="$(ls -1 data/processed/*.csv | head -n 1)"
+            echo "Using data file: ${DATA_FILE}"
+            python src/models/train_model.py \
+              --config configs/model_config.yaml \
+              --data "${DATA_FILE}" \
+              --models-dir models/trained
+              
       - name: Set tag
         run: echo "TAG=sha-${GITHUB_SHA::7}" >> $GITHUB_ENV
 
