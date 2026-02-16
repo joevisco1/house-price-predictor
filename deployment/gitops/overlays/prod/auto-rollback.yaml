@@ -58,8 +58,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: rollback
-              # Use the Argo Rollouts kubectl plugin image so we can "undo" reliably
-              image: quay.io/argoproj/kubectl-argo-rollouts:v1.7.0
+              image: bitnami/kubectl:latest
               imagePullPolicy: IfNotPresent
               command:
                 - sh
@@ -68,6 +67,23 @@ spec:
                   set -euo pipefail
                   NS="model-prod"
                   ROLLOUT="model"
+
+                  # --- install argo-rollouts kubectl plugin (single binary) ---
+                  # use the version that matches your image tag choice; v1.7.0 is fine here
+                  VERSION="v1.7.0"
+                  ARCH="$(uname -m)"
+                  case "$ARCH" in
+                    x86_64|amd64) ARCH="amd64" ;;
+                    aarch64|arm64) ARCH="arm64" ;;
+                    *) echo "Unsupported arch: $ARCH"; exit 1 ;;
+                  esac
+
+                  BIN="/tmp/kubectl-argo-rollouts"
+                  URL="https://github.com/argoproj/argo-rollouts/releases/download/${VERSION}/kubectl-argo-rollouts-linux-${ARCH}"
+
+                  echo "Downloading kubectl-argo-rollouts ${VERSION} (${ARCH})"
+                  wget -qO "$BIN" "$URL"
+                  chmod +x "$BIN"
 
                   # Identify the rollout's current pod template hash (revision under evaluation)
                   HASH="$(kubectl -n "$NS" get rollout "$ROLLOUT" -o jsonpath='{.status.currentPodHash}' || true)"
@@ -88,8 +104,8 @@ spec:
 
                   echo "Detected failed post analysis ($POST_NAME) for hash=$HASH. Undoing rollout/$ROLLOUT"
 
-                  # Roll back to previous ReplicaSet / revision
-                  kubectl-argo-rollouts undo "$ROLLOUT" -n "$NS"
+                  # Roll back to previous revision
+                  "$BIN" undo "$ROLLOUT" -n "$NS"
 
                   # Pause progression after rollback
                   kubectl -n "$NS" patch rollout "$ROLLOUT" --type merge \
