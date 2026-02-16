@@ -58,18 +58,19 @@ spec:
           restartPolicy: Never
           containers:
             - name: rollback
-              image: bitnami/kubectl:latest
+              image: alpine:3.19
               imagePullPolicy: IfNotPresent
               command:
                 - sh
                 - -lc
                 - |
                   set -euo pipefail
+                  apk add --no-cache curl kubectl ca-certificates >/dev/null
+
                   NS="model-prod"
                   ROLLOUT="model"
 
                   # --- install argo-rollouts kubectl plugin (single binary) ---
-                  # use the version that matches your image tag choice; v1.7.0 is fine here
                   VERSION="v1.7.0"
                   ARCH="$(uname -m)"
                   case "$ARCH" in
@@ -82,7 +83,7 @@ spec:
                   URL="https://github.com/argoproj/argo-rollouts/releases/download/${VERSION}/kubectl-argo-rollouts-linux-${ARCH}"
 
                   echo "Downloading kubectl-argo-rollouts ${VERSION} (${ARCH})"
-                  wget -qO "$BIN" "$URL"
+                  curl -fsSL "$URL" -o "$BIN"
                   chmod +x "$BIN"
 
                   # Identify the rollout's current pod template hash (revision under evaluation)
