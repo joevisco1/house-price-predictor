@@ -31,4 +31,4 @@ patches:
     path: patch-rollout-analysis-namespace.yaml
 images:
   - name: docker.io/joevisco/house-pricemodel
-    newTag: sha-test-autopromote
+    newTag: sha-5ac578f
