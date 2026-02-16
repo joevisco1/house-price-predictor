@@ -11,8 +11,6 @@ configMapGenerator:
     behavior: replace
     literals:
       - NAMESPACE=model-staging
-
-
 patches:
   - target:
       group: argoproj.io
@@ -32,4 +30,4 @@ patches:
     path: patch-rollout-analysis-namespace.yaml
 images:
   - name: docker.io/joevisco/house-pricemodel
-    newTag: sha-ae04857
+    newTag: sha-5ac578f
