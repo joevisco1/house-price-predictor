@@ -20,6 +20,7 @@ patches:
     path: patch-rollout-env-selector.yaml
   - path: patch-rollout-podlabels.yaml
   - path: patch-servicemonitor-namespace.yaml
+  - path: patch-servicemonitor-port.yaml
   - path: patch-service-active-env.yaml
   - path: patch-service-preview-env.yaml
   - target:
