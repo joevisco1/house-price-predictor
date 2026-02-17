@@ -1,37 +1,38 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - ../../base/streamlit
-  - namespace.yaml
-  - ../../base/model
+- ../../base/streamlit
+- namespace.yaml
+- ../../base/model
 commonLabels:
   env: staging
 namespace: model-staging
 configMapGenerator:
-  - name: env-vars
-    behavior: replace
-    literals:
-      - NAMESPACE=model-staging
+- behavior: replace
+  literals:
+  - NAMESPACE=model-staging
+  name: env-vars
 patches:
-  - target:
-      group: argoproj.io
-      version: v1alpha1
-      kind: Rollout
-      name: model
-    path: patch-rollout-env-selector.yaml
-  - path: patch-rollout-podlabels.yaml
-  - path: patch-servicemonitor-namespace.yaml
-  - path: patch-servicemonitor-port.yaml
-  - path: patch-service-active-env.yaml
-  - path: patch-service-preview-env.yaml
-  - target:
-      group: argoproj.io
-      version: v1alpha1
-      kind: Rollout
-      name: model
-    path: patch-rollout-analysis-namespace.yaml
+- path: patch-rollout-env-selector.yaml
+  target:
+    group: argoproj.io
+    kind: Rollout
+    name: model
+    version: v1alpha1
+- path: patch-rollout-podlabels.yaml
+- path: patch-servicemonitor-namespace.yaml
+- path: patch-servicemonitor-port.yaml
+- path: patch-service-active-env.yaml
+- path: patch-service-preview-env.yaml
+- path: patch-rollout-analysis-namespace.yaml
+  target:
+    group: argoproj.io
+    kind: Rollout
+    name: model
+    version: v1alpha1
 images:
-  - name: docker.io/joevisco/streamlit
-    newTag: sha-963f357
-  - name: docker.io/joevisco/house-pricemodel
-    newTag: sha-963f357
+- name: docker.io/joevisco/house-pricemodel
+  newName: docker.io/joevisco/house-pricemodel
+  newTag: sha-741be4c
+- name: docker.io/joevisco/streamlit
+  newTag: sha-963f357
