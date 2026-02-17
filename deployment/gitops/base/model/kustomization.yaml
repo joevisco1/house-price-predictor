@@ -11,6 +11,7 @@ resources:
   - fastapi-scaledobject.yaml
   - analysistemplate-slo-post.yaml
   - synthetic-traffic-cronjob.yaml
+  - keda-rollouts-rbac.yaml
 
 patches:
   - path: patch-rollout-restart.yaml

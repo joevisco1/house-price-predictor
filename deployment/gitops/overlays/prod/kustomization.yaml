@@ -4,7 +4,6 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - ../../base/model
-  - ../../base/model/keda-rollouts-rbac.yaml
 
 commonLabels:
   env: prod
