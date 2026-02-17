@@ -22,3 +22,11 @@ spec:
         env:
         - name: MODEL_BASE_URL
           value: "http://model-active:8000"
+        - name: API_BASE_URL
+          value: "http://model-active:8000"
+        - name: API_URL
+          value: "http://model-active:8000"
+        - name: BACKEND_URL
+          value: "http://model-active:8000"
+        - name: PREDICT_URL
+          value: "http://model-active:8000/predict"
