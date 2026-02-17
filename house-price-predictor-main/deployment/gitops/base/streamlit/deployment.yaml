@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: streamlit
+  labels:
+    app: streamlit
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: streamlit
+  template:
+    metadata:
+      labels:
+        app: streamlit
+    spec:
+      containers:
+      - name: streamlit
+        image: docker.io/joevisco/streamlit:latest
+        ports:
+        - containerPort: 8501
+        env:
+        - name: MODEL_BASE_URL
+          value: "http://model-active:8000"
+        - name: API_BASE_URL
+          value: "http://model-active:8000"
+        - name: API_URL
+          value: "http://model-active:8000"
+        - name: BACKEND_URL
+          value: "http://model-active:8000"
+        - name: PREDICT_URL
+          value: "http://model-active:8000/predict"

@@ -1,0 +1,15 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: model
+spec:
+  strategy:
+    blueGreen:
+      autoPromotionEnabled: true
+
+  template:
+    metadata:
+      annotations:
+        gitops/restartNonce: "1"
+      labels:
+        env: staging

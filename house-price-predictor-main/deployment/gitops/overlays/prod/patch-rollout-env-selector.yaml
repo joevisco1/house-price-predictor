@@ -1,0 +1,6 @@
+- op: add
+  path: /spec/selector/matchLabels/env
+  value: prod
+- op: add
+  path: /spec/template/metadata/labels/env
+  value: prod

@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: house-price-staging
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/joevisco1/house-price-predictor.git
+    targetRevision: main
+    path: deployment/gitops/overlays/staging
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: model-staging
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

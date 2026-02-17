@@ -1,0 +1,68 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: model-slo-post
+spec:
+  args:
+  - name: namespace
+  - name: service
+
+  metrics:
+  - name: p95-latency
+    interval: 30s
+    count: 4
+    failureLimit: 0
+    provider:
+      prometheus:
+        address: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
+        query: |
+          (
+            histogram_quantile(
+              0.95,
+              sum by (le) (
+                rate(http_request_duration_highr_seconds_bucket{
+                  namespace="{{args.namespace}}",
+                  service="{{args.service}}"
+                }[2m])
+              )
+            )
+            and on()
+            (
+              histogram_quantile(
+                0.95,
+                sum by (le) (
+                  rate(http_request_duration_highr_seconds_bucket{
+                    namespace="{{args.namespace}}",
+                    service="{{args.service}}"
+                  }[2m])
+                )
+              )
+              ==
+              histogram_quantile(
+                0.95,
+                sum by (le) (
+                  rate(http_request_duration_highr_seconds_bucket{
+                    namespace="{{args.namespace}}",
+                    service="{{args.service}}"
+                  }[2m])
+                )
+              )
+            )
+          ) or on() vector(0)
+    successCondition: len(result) > 0 && result[0] < 0.25
+
+  - name: min-rps-floor
+    interval: 30s
+    count: 4
+    failureLimit: 0
+    provider:
+      prometheus:
+        address: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
+        query: |
+          sum(
+            rate(http_request_duration_highr_seconds_count{
+              namespace="{{args.namespace}}",
+              service="{{args.service}}"
+            }[2m])
+          ) or on() vector(0)
+    successCondition: len(result) > 0 && (result[0] == 0 || result[0] >= 0.005)

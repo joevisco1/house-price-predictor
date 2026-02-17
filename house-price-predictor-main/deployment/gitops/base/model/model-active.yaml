@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: model-active
+  labels:
+    app: model
+    role: active
+spec:
+  type: ClusterIP
+  selector:
+    app: model
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      protocol: TCP
+    - name: metrics
+      port: 9100
+      targetPort: 9100
+      protocol: TCP

@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - env-vars.yaml
+  - model-rollout.yaml
+  - model-active.yaml
+  - model-preview.yaml
+  - model-servicemonitor.yaml
+  - analysis-template.yaml
+  - fastapi-scaledobject.yaml
+  - analysistemplate-slo-post.yaml
+  - synthetic-traffic-cronjob.yaml
+patches:
+  - path: patch-rollout-restart.yaml
+    target:
+      group: argoproj.io
+      version: v1alpha1
+      kind: Rollout
+      name: model

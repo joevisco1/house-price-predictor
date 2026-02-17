@@ -1,0 +1,59 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: model
+  labels:
+    app: model
+spec:
+  revisionHistoryLimit: 3
+  replicas: 2
+  selector:
+    matchLabels:
+      app: model
+  template:
+    metadata:
+      labels:
+        app: model
+    spec:
+      containers:
+        - name: house-pricemodel
+          image: docker.io/joevisco/house-pricemodel:sha-INITIAL
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+              protocol: TCP
+          resources:
+            limits:
+              cpu: 100m
+              memory: 128Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+
+  strategy:
+    blueGreen:
+      activeService: model-active
+      previewService: model-preview
+      autoPromotionEnabled: false
+
+      abortScaleDownDelaySeconds: 60
+
+      prePromotionAnalysis:
+        templates:
+          - templateName: model-gate-latency-errors
+        args:
+          - name: namespace
+            value: PLACEHOLDER_NAMESPACE
+          - name: service
+            value: model-preview
+          - name: job
+            value: model-preview
+
+      postPromotionAnalysis:
+        templates:
+          - templateName: model-slo-post
+        args:
+          - name: namespace
+            value: PLACEHOLDER_NAMESPACE
+          - name: service
+            value: model-active

@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: streamlit
+  name: streamlit
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: streamlit
+  template:
+    metadata:
+      labels:
+        app: streamlit
+    spec:
+      containers:
+      - image: joevisco/streamlit:latest
+        imagePullPolicy: Always
+        name: streamlit
+        ports:
+        - containerPort: 8501
+        env:
+        - name: API_URL
+          value: http://model-active:8000
+

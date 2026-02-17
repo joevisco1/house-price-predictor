@@ -1,0 +1,70 @@
+name: Retrain and Deploy (Staging)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *" # nightly 3am UTC
+
+permissions:
+  contents: write
+
+jobs:
+  retrain_build_deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+      
+      - name: Prepare dataset
+        run: |
+          python src/data/run_processing.py
+
+      - name: Train model
+        run: |
+            DATA_FILE="$(ls -1 data/processed/*.csv | head -n 1)"
+            echo "Using data file: ${DATA_FILE}"
+            python src/models/train_model.py \
+              --config configs/model_config.yaml \
+              --data "${DATA_FILE}" \
+              --models-dir models/trained
+              
+      - name: Set tag
+        run: echo "TAG=sha-${GITHUB_SHA::7}" >> $GITHUB_ENV
+
+      - name: Docker login
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      - name: Build image
+        run: docker build -t joevisco/house-pricemodel:${TAG} .
+
+      - name: Push image
+        run: docker push joevisco/house-pricemodel:${TAG}
+
+      - name: Install kustomize
+        run: |
+          curl -sSL -o kustomize.tar.gz https://github.com/kubernetes-sigs/kustomize/releases/latest/download/kustomize_linux_amd64.tar.gz
+          tar -xzf kustomize.tar.gz
+          sudo mv kustomize /usr/local/bin/kustomize
+
+      - name: Update staging overlay image tag
+        run: |
+          cd deployment/gitops/overlays/staging
+          # IMPORTANT: left side must match the image name used by kustomize in your overlay/base
+          kustomize edit set image docker.io/joevisco/house-pricemodel=docker.io/joevisco/house-pricemodel:${TAG}
+
+      - name: Commit and push GitOps change
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add deployment/gitops/overlays/staging
+          git commit -m "auto: retrain deploy ${TAG}" || echo "No changes to commit"
+          git push

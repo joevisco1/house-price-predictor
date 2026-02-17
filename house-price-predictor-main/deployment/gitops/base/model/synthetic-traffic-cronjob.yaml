@@ -1,0 +1,36 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: model-synthetic-traffic
+  labels:
+    app: model
+spec:
+  schedule: "*/1 * * * *"   # every minute
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app: model
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: curl
+              image: curlimages/curl:8.6.0
+              imagePullPolicy: IfNotPresent
+              command:
+                - sh
+                - -lc
+                - |
+                  set -e
+                  # Hit both active + preview to keep SLO gates exercised
+                  for svc in model-active model-preview; do
+                    curl -sS -m 2 -X POST "http://${svc}:8000/predict" \
+                      -H 'Content-Type: application/json' \
+                      -d '{"crim":0.1,"zn":0.0,"indus":8.0,"chas":0,"nox":0.5,"rm":6.0,"age":65.0,"dis":4.0,"rad":4.0,"tax":300.0,"ptratio":18.0,"b":390.0,"lstat":12.0}' \
+                      >/dev/null || true
+                  done

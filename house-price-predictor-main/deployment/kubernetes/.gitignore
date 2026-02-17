@@ -1,0 +1,7 @@
+
+data/
+metrics-server/
+kube-ops-view/
+k8s-code/
+monitoring/autoscaler/
+
