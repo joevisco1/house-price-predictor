@@ -5,14 +5,25 @@ import logging
 from datetime import datetime
 
 import joblib
-import mlflow
-import mlflow.sklearn
+
+# MLflow is OPTIONAL (so training works inside the inference image)
+try:
+    import mlflow
+    import mlflow.sklearn
+    from mlflow.tracking import MlflowClient
+
+    MLFLOW_AVAILABLE = True
+except Exception:
+    mlflow = None
+    MlflowClient = None
+    MLFLOW_AVAILABLE = False
+
 import numpy as np
 import pandas as pd
 import sklearn
 import xgboost as xgb
 import yaml
-from mlflow.tracking import MlflowClient
+
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.impute import SimpleImputer
@@ -95,42 +106,27 @@ def apply_feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
         df["house_age"] = datetime.now().year - df["year_built"]
 
     if "bedrooms" in df.columns and "bathrooms" in df.columns:
-        # Avoid divide-by-zero and inf
         denom = df["bathrooms"].replace(0, 1)
         df["bed_bath_ratio"] = df["bedrooms"] / denom
 
-    # Keep constant to match inference behavior and avoid label leakage
+    # Keep constant to match inference behavior and avoid leakage
     df["price_per_sqft"] = 0
 
     return df
 
 
 # -----------------------------
-# Main logic
+# Core training routine (works with or without MLflow)
 # -----------------------------
-def main(args):
-    # Load config
-    with open(args.config, "r") as f:
-        config = yaml.safe_load(f)
-    model_cfg = config["model"]
-    target = model_cfg["target_variable"]
-
-    if args.mlflow_tracking_uri:
-        mlflow.set_tracking_uri(args.mlflow_tracking_uri)
-
-    # Experiment name uses config model name
-    mlflow.set_experiment(model_cfg["name"])
-
-    # Load data
-    data = pd.read_csv(args.data)
+def train_and_evaluate(model_cfg: dict, target: str, data_path: str):
+    data = pd.read_csv(data_path)
 
     if target not in data.columns:
         raise ValueError(f"Target variable '{target}' not found in dataset columns: {list(data.columns)}")
 
-    # Apply feature engineering BEFORE split, and BEFORE fitting preprocessor (must match inference)
+    # Must match inference
     data = apply_feature_engineering(data)
 
-    # Split features/target
     X = data.drop(columns=[target])
     y = data[target]
 
@@ -138,39 +134,63 @@ def main(args):
         X, y, test_size=0.2, random_state=42
     )
 
-    # Build preprocessor on training data (no schema guessing)
     preprocessor = build_preprocessor(X_train)
-
-    # Transform
     X_train_t = preprocessor.fit_transform(X_train)
     X_test_t = preprocessor.transform(X_test)
 
-    # Build model from config
     model = get_model_instance(model_cfg["best_model"], model_cfg["parameters"])
+    logger.info(f"Training model: {model_cfg['best_model']}")
+    model.fit(X_train_t, y_train)
 
-    # Ensure output directory exists
+    y_pred = model.predict(X_test_t)
+    mae = float(mean_absolute_error(y_test, y_pred))
+    r2 = float(r2_score(y_test, y_pred))
+
+    return model, preprocessor, mae, r2
+
+
+# -----------------------------
+# Main
+# -----------------------------
+def main(args):
+    with open(args.config, "r") as f:
+        config = yaml.safe_load(f)
+
+    model_cfg = config["model"]
+    target = model_cfg["target_variable"]
+
+    # Train + eval (no mlflow dependency here)
+    model, preprocessor, mae, r2 = train_and_evaluate(model_cfg, target, args.data)
+
+    # Save artifacts locally for container deployment (canonical filenames)
     trained_dir = os.path.join(args.models_dir, "trained")
     os.makedirs(trained_dir, exist_ok=True)
 
-    # Canonical artifact paths expected by inference
     model_path = os.path.join(trained_dir, "house_price_model.pkl")
     preprocessor_path = os.path.join(trained_dir, "preprocessor.pkl")
 
-    # Start MLflow run
+    joblib.dump(model, model_path)
+    joblib.dump(preprocessor, preprocessor_path)
+
+    logger.info(f"Saved trained model to: {model_path}")
+    logger.info(f"Saved preprocessor to: {preprocessor_path}")
+    logger.info(f"Final MAE: {mae:.2f}, R²: {r2:.4f}")
+
+    # Optional MLflow logging/registry (only if installed)
+    if not MLFLOW_AVAILABLE:
+        logger.info("MLflow not installed in this environment; skipping MLflow logging/registry.")
+        return
+
+    if args.mlflow_tracking_uri:
+        mlflow.set_tracking_uri(args.mlflow_tracking_uri)
+
+    mlflow.set_experiment(model_cfg["name"])
+
     with mlflow.start_run(run_name="final_training"):
-        logger.info(f"Training model: {model_cfg['best_model']}")
-        model.fit(X_train_t, y_train)
-
-        y_pred = model.predict(X_test_t)
-
-        mae = float(mean_absolute_error(y_test, y_pred))
-        r2 = float(r2_score(y_test, y_pred))
-
-        # Log params and metrics
         mlflow.log_params(model_cfg["parameters"])
         mlflow.log_metrics({"mae": mae, "r2": r2})
 
-        # Log sklearn model artifact (estimator only). Registry remains informative.
+        # Log estimator artifact (keeps registry informative)
         mlflow.sklearn.log_model(model, "tuned_model")
 
         model_name = model_cfg["name"]
@@ -180,23 +200,24 @@ def main(args):
         client = MlflowClient()
         try:
             client.create_registered_model(model_name)
-        except mlflow.exceptions.RestException:
-            pass  # already exists
+        except Exception:
+            pass  # already exists or registry not available
 
-        model_version = client.create_model_version(
-            name=model_name,
-            source=model_uri,
-            run_id=mlflow.active_run().info.run_id,
-        )
+        try:
+            model_version = client.create_model_version(
+                name=model_name,
+                source=model_uri,
+                run_id=mlflow.active_run().info.run_id,
+            )
 
-        # Transition model to "Staging"
-        client.transition_model_version_stage(
-            name=model_name,
-            version=model_version.version,
-            stage="Staging",
-        )
+            client.transition_model_version_stage(
+                name=model_name,
+                version=model_version.version,
+                stage="Staging",
+            )
+        except Exception as e:
+            logger.warning(f"MLflow registry operations failed (continuing): {e}")
 
-        # Human-readable description
         description = (
             f"Model for predicting house prices.\n"
             f"Algorithm: {model_cfg['best_model']}\n"
@@ -211,39 +232,32 @@ def main(args):
             f"  - MAE: {mae:.2f}\n"
             f"  - R²: {r2:.4f}"
         )
-        client.update_registered_model(name=model_name, description=description)
 
-        # Tags for organization
-        client.set_registered_model_tag(model_name, "algorithm", model_cfg["best_model"])
-        client.set_registered_model_tag(model_name, "hyperparameters", str(model_cfg["parameters"]))
-        client.set_registered_model_tag(
-            model_name,
-            "features",
-            "all_except_target_plus_engineered(house_age, bed_bath_ratio, price_per_sqft)",
-        )
-        client.set_registered_model_tag(model_name, "target_variable", target)
-        client.set_registered_model_tag(model_name, "training_dataset", args.data)
-        client.set_registered_model_tag(model_name, "model_path", model_path)
-        client.set_registered_model_tag(model_name, "preprocessor_path", preprocessor_path)
+        try:
+            client.update_registered_model(name=model_name, description=description)
+            client.set_registered_model_tag(model_name, "algorithm", model_cfg["best_model"])
+            client.set_registered_model_tag(model_name, "hyperparameters", str(model_cfg["parameters"]))
+            client.set_registered_model_tag(
+                model_name,
+                "features",
+                "all_except_target_plus_engineered(house_age, bed_bath_ratio, price_per_sqft)",
+            )
+            client.set_registered_model_tag(model_name, "target_variable", target)
+            client.set_registered_model_tag(model_name, "training_dataset", args.data)
+            client.set_registered_model_tag(model_name, "model_path", model_path)
+            client.set_registered_model_tag(model_name, "preprocessor_path", preprocessor_path)
 
-        # Dependency tags
-        deps = {
-            "python_version": platform.python_version(),
-            "scikit_learn_version": sklearn.__version__,
-            "xgboost_version": xgb.__version__,
-            "pandas_version": pd.__version__,
-            "numpy_version": np.__version__,
-        }
-        for k, v in deps.items():
-            client.set_registered_model_tag(model_name, k, v)
-
-        # Save artifacts locally for container deployment
-        joblib.dump(model, model_path)
-        joblib.dump(preprocessor, preprocessor_path)
-
-        logger.info(f"Saved trained model to: {model_path}")
-        logger.info(f"Saved preprocessor to: {preprocessor_path}")
-        logger.info(f"Final MAE: {mae:.2f}, R²: {r2:.4f}")
+            deps = {
+                "python_version": platform.python_version(),
+                "scikit_learn_version": sklearn.__version__,
+                "xgboost_version": xgb.__version__,
+                "pandas_version": pd.__version__,
+                "numpy_version": np.__version__,
+            }
+            for k, v in deps.items():
+                client.set_registered_model_tag(model_name, k, v)
+        except Exception as e:
+            logger.warning(f"MLflow model metadata/tagging failed (continuing): {e}")
 
 
 if __name__ == "__main__":
