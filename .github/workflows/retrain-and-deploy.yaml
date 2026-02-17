@@ -24,31 +24,49 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Set tag
+        run: echo "TAG=sha-${GITHUB_SHA::7}" >> $GITHUB_ENV
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker login
+        uses: docker/login-action@v3
         with:
-          python-version: "3.11"
-          cache: "pip"
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Install deps
-        run: pip install -r requirements.txt
+      # Build the image first (this defines the EXACT runtime environment)
+      - name: Build image (load locally)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          tags: docker.io/joevisco/house-pricemodel:${{ env.TAG }}
+          load: true
+          push: false
 
-      - name: Prepare dataset
+      # Train inside the image to eliminate library mismatch.
+      # Writes artifacts to the repo workspace via bind mount.
+      - name: Prepare data + train inside image
         run: |
           set -euo pipefail
-          python src/data/run_processing.py
+          docker run --rm \
+            -v "${{ github.workspace }}:/work" \
+            -w /work \
+            docker.io/joevisco/house-pricemodel:${TAG} \
+            sh -lc '
+              python -V
+              python -c "import sklearn, numpy, pandas, joblib; print(\"sklearn\", sklearn.__version__); print(\"numpy\", numpy.__version__); print(\"pandas\", pandas.__version__); print(\"joblib\", joblib.__version__)"
+              python src/data/run_processing.py
+              DATA_FILE="$(ls -1 data/processed/*.csv | head -n 1)"
+              echo "Using data file: ${DATA_FILE}"
+              python src/models/train_model.py \
+                --config configs/model_config.yaml \
+                --data "${DATA_FILE}" \
+                --models-dir models
+            '
 
-      - name: Train model
-        run: |
-          set -euo pipefail
-          DATA_FILE="$(ls -1 data/processed/*.csv | head -n 1)"
-          echo "Using data file: ${DATA_FILE}"
-          python src/models/train_model.py \
-            --config configs/model_config.yaml \
-            --data "${DATA_FILE}" \
-            --models-dir models/trained
-
-      # Explicit artifact guard: prevents shipping broken/mismatched images
+      # Explicit artifact guard (matches your repo)
       - name: Verify trained artifacts exist
         run: |
           set -euo pipefail
@@ -60,21 +78,8 @@ jobs:
           test -s models/trained/preprocessor.pkl
           echo "✅ Found required artifacts: house_price_model.pkl + preprocessor.pkl"
 
-      - name: Set tag
-        run: echo "TAG=sha-${GITHUB_SHA::7}" >> $GITHUB_ENV
-
-      # Reliable Docker build/push on GitHub runners
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Docker login
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      # Build and load locally so we can validate image contents before pushing.
-      - name: Build image (load locally)
+      # Rebuild the image so it bakes in the newly trained artifacts
+      - name: Rebuild image with trained artifacts (load locally)
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -82,7 +87,7 @@ jobs:
           load: true
           push: false
 
-      # Guardrail: ensure the built image actually contains the artifacts (catches .dockerignore/path issues)
+      # Guardrail: ensure the rebuilt image actually contains the artifacts
       - name: Verify image contains model artifacts
         run: |
           set -euo pipefail
@@ -114,7 +119,6 @@ jobs:
         run: |
           set -euo pipefail
           cd deployment/gitops/overlays/staging
-          # Left side MUST match the image name in overlay/base
           kustomize edit set image \
             docker.io/joevisco/house-pricemodel=docker.io/joevisco/house-pricemodel:${TAG}
 
@@ -128,8 +132,6 @@ jobs:
           git config user.email "actions@github.com"
 
           git add deployment/gitops/overlays/staging
-
-          # Show what will be committed (helps debug)
           echo "Staged changes:"
           git diff --cached --name-only
 
