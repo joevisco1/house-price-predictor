@@ -8,63 +8,130 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: retrain-deploy-staging
+  cancel-in-progress: false
+
 jobs:
   retrain_build_deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      # ArgoCD tracks main, so this workflow must update main.
+      - name: Checkout main
         uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
 
       - name: Install deps
         run: pip install -r requirements.txt
-      
+
       - name: Prepare dataset
         run: |
+          set -euo pipefail
           python src/data/run_processing.py
 
       - name: Train model
         run: |
-            DATA_FILE="$(ls -1 data/processed/*.csv | head -n 1)"
-            echo "Using data file: ${DATA_FILE}"
-            python src/models/train_model.py \
-              --config configs/model_config.yaml \
-              --data "${DATA_FILE}" \
-              --models-dir models/trained
-              
+          set -euo pipefail
+          DATA_FILE="$(ls -1 data/processed/*.csv | head -n 1)"
+          echo "Using data file: ${DATA_FILE}"
+          python src/models/train_model.py \
+            --config configs/model_config.yaml \
+            --data "${DATA_FILE}" \
+            --models-dir models/trained
+
+      # Explicit artifact guard: prevents shipping broken/mismatched images
+      - name: Verify trained artifacts exist
+        run: |
+          set -euo pipefail
+          echo "Trained artifacts:"
+          ls -lah models/trained
+          test -f models/trained/house_price_model.pkl
+          test -f models/trained/preprocessor.pkl
+          test -s models/trained/house_price_model.pkl
+          test -s models/trained/preprocessor.pkl
+          echo "✅ Found required artifacts: house_price_model.pkl + preprocessor.pkl"
+
       - name: Set tag
         run: echo "TAG=sha-${GITHUB_SHA::7}" >> $GITHUB_ENV
 
-      - name: Docker login
-        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+      # Reliable Docker build/push on GitHub runners
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Build image
-        run: docker build -t joevisco/house-pricemodel:${TAG} .
+      - name: Docker login
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # Build and load locally so we can validate image contents before pushing.
+      - name: Build image (load locally)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          tags: docker.io/joevisco/house-pricemodel:${{ env.TAG }}
+          load: true
+          push: false
+
+      # Guardrail: ensure the built image actually contains the artifacts (catches .dockerignore/path issues)
+      - name: Verify image contains model artifacts
+        run: |
+          set -euo pipefail
+          docker run --rm docker.io/joevisco/house-pricemodel:${TAG} \
+            sh -lc 'ls -lah models/trained && test -f models/trained/house_price_model.pkl && test -f models/trained/preprocessor.pkl'
 
       - name: Push image
-        run: docker push joevisco/house-pricemodel:${TAG}
+        run: |
+          set -euo pipefail
+          docker push docker.io/joevisco/house-pricemodel:${TAG}
+
+      # Guardrail: prove tag exists in registry BEFORE touching GitOps (prevents ImagePullBackOff)
+      - name: Verify image exists in registry
+        run: |
+          set -euo pipefail
+          docker manifest inspect docker.io/joevisco/house-pricemodel:${TAG} >/dev/null
+          echo "✅ Image exists: docker.io/joevisco/house-pricemodel:${TAG}"
 
       - name: Install kustomize
         run: |
-          curl -sSL -o kustomize.tar.gz https://github.com/kubernetes-sigs/kustomize/releases/latest/download/kustomize_linux_amd64.tar.gz
+          set -euo pipefail
+          curl -sSL -o kustomize.tar.gz \
+            https://github.com/kubernetes-sigs/kustomize/releases/latest/download/kustomize_linux_amd64.tar.gz
           tar -xzf kustomize.tar.gz
           sudo mv kustomize /usr/local/bin/kustomize
+          kustomize version
 
       - name: Update staging overlay image tag
         run: |
+          set -euo pipefail
           cd deployment/gitops/overlays/staging
-          # IMPORTANT: left side must match the image name used by kustomize in your overlay/base
-          kustomize edit set image docker.io/joevisco/house-pricemodel=docker.io/joevisco/house-pricemodel:${TAG}
+          # Left side MUST match the image name in overlay/base
+          kustomize edit set image \
+            docker.io/joevisco/house-pricemodel=docker.io/joevisco/house-pricemodel:${TAG}
 
-      - name: Commit and push GitOps change
+          echo "Updated images block:"
+          cat kustomization.yaml | sed -n '/^images:/,/^[^ -]/p'
+
+      - name: Commit and push GitOps change (main)
         run: |
+          set -euo pipefail
           git config user.name "github-actions"
           git config user.email "actions@github.com"
+
           git add deployment/gitops/overlays/staging
+
+          # Show what will be committed (helps debug)
+          echo "Staged changes:"
+          git diff --cached --name-only
+
           git commit -m "auto: retrain deploy ${TAG}" || echo "No changes to commit"
-          git push
+          git push origin main
