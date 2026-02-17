@@ -1,6 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+  - ../../base/streamlit
   - namespace.yaml
   - ../../base/model
 commonLabels:
@@ -30,5 +31,7 @@ patches:
       name: model
     path: patch-rollout-analysis-namespace.yaml
 images:
+  - name: docker.io/joevisco/streamlit
+    newTag: latest
   - name: docker.io/joevisco/house-pricemodel
     newTag: sha-5ac578f
