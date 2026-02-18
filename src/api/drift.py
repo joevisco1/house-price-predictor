@@ -27,6 +27,12 @@ DRIFT_HIGH_TOTAL = Counter(
     "Count of requests where drift score exceeded threshold.",
 )
 
+# NEW: expose threshold as metric so Prometheus/Grafana knows what logic is used
+DRIFT_HIGH_THRESHOLD = Gauge(
+    "model_drift_high_threshold",
+    "Threshold used to increment model_drift_high_total.",
+)
+
 BASELINE_LOADED = Gauge(
     "model_drift_baseline_loaded",
     "1 if baseline_stats.json loaded successfully, else 0.",
@@ -59,6 +65,10 @@ def record_drift_metrics(processed_features) -> float:
 
     `processed_features` may be a sparse matrix or dense array. We use the first row.
     """
+
+    # always export active threshold
+    DRIFT_HIGH_THRESHOLD.set(DRIFT_THRESHOLD)
+
     if _BASELINE is None:
         DRIFT_SCORE.set(0.0)
         return 0.0
@@ -87,6 +97,8 @@ def record_drift_metrics(processed_features) -> float:
 
     score = sum(zscores) / len(zscores) if zscores else 0.0
     DRIFT_SCORE.set(score)
+
     if score >= DRIFT_THRESHOLD:
         DRIFT_HIGH_TOTAL.inc()
+
     return score
