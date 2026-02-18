@@ -1,64 +1,130 @@
-import joblib
-import pandas as pd
-from datetime import datetime
-from schemas import HousePredictionRequest, PredictionResponse
-from drift import record_drift_metrics
+"""
+Simple online drift metric exported to Prometheus.
 
-# Load model and preprocessor
-MODEL_PATH = "models/trained/house_price_model.pkl"
-PREPROCESSOR_PATH = "models/trained/preprocessor.pkl"
+We compute a single scalar drift score as the average absolute z-score across the
+TRANSFORMED feature vector (the exact feature space your model sees).
 
-try:
-    model = joblib.load(MODEL_PATH)
-    preprocessor = joblib.load(PREPROCESSOR_PATH)
-except Exception as e:
-    raise RuntimeError(f"Error loading model or preprocessor: {str(e)}")
+If baseline stats are missing, we DO NOT crash the API; we expose a metric flag
+`model_drift_baseline_loaded` so you can alert on misconfiguration.
+"""
 
-def predict_price(request: HousePredictionRequest) -> PredictionResponse:
+from __future__ import annotations
+
+import json
+import os
+from typing import Any, Dict, Literal, Optional
+
+from prometheus_client import Counter, Gauge
+
+# --- Prometheus metrics ---
+DRIFT_SCORE = Gauge(
+    "model_drift_score",
+    "Avg abs z-score across transformed model features vs training baseline.",
+)
+
+DRIFT_HIGH_TOTAL = Counter(
+    "model_drift_high_total",
+    "Count of requests where drift score exceeded threshold.",
+)
+
+# NEW: expose threshold as metric so Prometheus/Grafana knows what logic is used
+DRIFT_HIGH_THRESHOLD = Gauge(
+    "model_drift_high_threshold",
+    "Threshold used to increment model_drift_high_total.",
+)
+
+BASELINE_LOADED = Gauge(
+    "model_drift_baseline_loaded",
+    "1 if baseline_stats.json loaded successfully, else 0.",
+)
+
+# NEW: synthetic traffic execution counter (so you know traffic ran + succeeded/failed)
+SYNTH_REQUESTS_TOTAL = Counter(
+    "model_synthetic_requests_total",
+    "Synthetic traffic requests executed (normal/drift) against active/preview, labeled by outcome.",
+    ["service", "kind", "status"],
+)
+
+DRIFT_THRESHOLD = float(os.getenv("DRIFT_THRESHOLD", "3.0"))
+BASELINE_PATH = os.getenv("BASELINE_PATH", "baseline_stats.json")
+
+
+def _safe_load_baseline(path: str) -> Dict[str, Any] | None:
+    try:
+        with open(path, "r", encoding="utf-8") as fp:
+            baseline = json.load(fp)
+        if "features" not in baseline or "baseline" not in baseline:
+            return None
+        return baseline
+    except FileNotFoundError:
+        return None
+    except Exception:
+        return None
+
+
+_BASELINE: Dict[str, Any] | None = _safe_load_baseline(BASELINE_PATH)
+BASELINE_LOADED.set(1 if _BASELINE is not None else 0)
+
+
+def record_synth_request(
+    service: str,
+    kind: Literal["normal", "drift"],
+    status: Literal["success", "failure"],
+) -> None:
     """
-    Predict house price based on input features.
+    Increment a synthetic-traffic counter.
+
+    Call this from wherever synthetic traffic is executed/handled so Prometheus can
+    show: did the CronJob run, did payload validate, which service failed, etc.
+
+    Example:
+        record_synth_request("model-active", "drift", "success")
     """
-    # Prepare input data
-    input_data = pd.DataFrame([request.dict()])
-    input_data['house_age'] = datetime.now().year - input_data['year_built']
-    input_data['bed_bath_ratio'] = input_data['bedrooms'] / input_data['bathrooms']
-    input_data['price_per_sqft'] = 0  # Dummy value for compatibility
+    # keep labels bounded; avoid unbounded cardinality from typos
+    svc = service.strip()[:64] if service else "unknown"
+    SYNTH_REQUESTS_TOTAL.labels(service=svc, kind=kind, status=status).inc()
 
-    # Preprocess input data
-    processed_features = preprocessor.transform(input_data)
-    record_drift_metrics(processed_features)
 
-    # Make prediction
-    predicted_price = model.predict(processed_features)[0]
-
-    # Convert numpy.float32 to Python float and round to 2 decimal places
-    predicted_price = round(float(predicted_price), 2)
-
-    # Confidence interval (10% range)
-    confidence_interval = [predicted_price * 0.9, predicted_price * 1.1]
-
-    # Convert confidence interval values to Python float and round to 2 decimal places
-    confidence_interval = [round(float(value), 2) for value in confidence_interval]
-
-    return PredictionResponse(
-        predicted_price=predicted_price,
-        confidence_interval=confidence_interval,
-        features_importance={},
-        prediction_time=datetime.now().isoformat()
-    )
-
-def batch_predict(requests: list[HousePredictionRequest]) -> list[float]:
+def record_drift_metrics(processed_features) -> float:
     """
-    Perform batch predictions.
+    Record drift metrics from the output of `preprocessor.transform(...)`.
+
+    `processed_features` may be a sparse matrix or dense array. We use the first row.
     """
-    input_data = pd.DataFrame([req.dict() for req in requests])
-    input_data['house_age'] = datetime.now().year - input_data['year_built']
-    input_data['bed_bath_ratio'] = input_data['bedrooms'] / input_data['bathrooms']
-    input_data['price_per_sqft'] = 0  # Dummy value for compatibility
 
-    # Preprocess input data
-    processed_features = preprocessor.transform(input_data)
+    # always export active threshold
+    DRIFT_HIGH_THRESHOLD.set(DRIFT_THRESHOLD)
 
-    # Make predictions
-    predictions = model.predict(processed_features)
-    return predictions.tolist()
+    if _BASELINE is None:
+        DRIFT_SCORE.set(0.0)
+        return 0.0
+
+    features = _BASELINE["features"]     # e.g., ["0","1",...]
+    stats = _BASELINE["baseline"]
+
+    row = processed_features[0]
+
+    # scipy sparse row => dense
+    if hasattr(row, "toarray"):
+        row = row.toarray()[0]
+
+    if hasattr(row, "ravel"):
+        row = row.ravel()
+
+    zscores = []
+    for i, f in enumerate(features):
+        try:
+            x = float(row[i])
+            mu = float(stats[f]["mean"])
+            sigma = float(stats[f]["std"]) or 1e-9
+            zscores.append(abs((x - mu) / sigma))
+        except Exception:
+            continue
+
+    score = sum(zscores) / len(zscores) if zscores else 0.0
+    DRIFT_SCORE.set(score)
+
+    if score >= DRIFT_THRESHOLD:
+        DRIFT_HIGH_TOTAL.inc()
+
+    return score

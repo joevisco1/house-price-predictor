@@ -4,28 +4,28 @@ metadata:
   name: model-drift-rules
   namespace: default
   labels:
-    release: prom   # REQUIRED by Prometheus ruleSelector
+    release: prom
 spec:
   groups:
   - name: model.drift.recording
     rules:
     - record: model:drift_score:avg15m
       expr: |
-        avg_over_time(model_drift_score{namespace="model-staging",service="model-preview"}[15m])
+        avg_over_time(model_drift_score{namespace="model-staging"}[15m])
         or on() vector(0)
 
     - record: model:drift_high_rps:rate5m
       expr: |
-        sum(rate(model_drift_high_total{namespace="model-staging",service="model-preview"}[5m]))
+        sum(rate(model_drift_high_total{namespace="model-staging"}[5m]))
         or on() vector(0)
 
     - record: model:drift_high_ratio:rate5m
       expr: |
         (
-          sum(rate(model_drift_high_total{namespace="model-staging",service="model-preview"}[5m]))
+          sum(rate(model_drift_high_total{namespace="model-staging"}[5m]))
           /
           clamp_min(
-            sum(rate(http_requests_total{namespace="model-staging",service="model-preview",handler="/predict",status="2xx"}[5m])),
+            sum(rate(http_requests_total{namespace="model-staging",handler="/predict",status="2xx"}[5m])),
             1
           )
         ) or on() vector(0)
