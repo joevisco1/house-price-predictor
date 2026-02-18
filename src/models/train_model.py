@@ -71,6 +71,11 @@ def get_model_instance(name: str, params: dict):
 # Preprocessor (dtype-driven, no hard-coded feature list)
 # -----------------------------
 def build_preprocessor(X: pd.DataFrame) -> ColumnTransformer:
+    """
+    IMPORTANT:
+    - remainder="drop" ensures no silent passthrough columns (the source of your 17 vs 16 mismatch).
+    - numeric/categorical columns are derived from dtypes of the *training* frame after feature engineering.
+    """
     num_cols = X.select_dtypes(include=[np.number]).columns.tolist()
     cat_cols = X.select_dtypes(exclude=[np.number]).columns.tolist()
 
@@ -119,6 +124,8 @@ def apply_feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
 # Core training routine (works with or without MLflow)
 # -----------------------------
 def train_and_evaluate(model_cfg: dict, target: str, data_path: str):
+    CONTRACT_FAIL_PREFIX = "TRAINING_CONTRACT_VIOLATION: "
+
     data = pd.read_csv(data_path)
 
     if target not in data.columns:
@@ -135,12 +142,27 @@ def train_and_evaluate(model_cfg: dict, target: str, data_path: str):
     )
 
     preprocessor = build_preprocessor(X_train)
+
     X_train_t = preprocessor.fit_transform(X_train)
     X_test_t = preprocessor.transform(X_test)
 
+    # --- CONTRACT CHECKS (must never ship mismatched artifacts) ---
+    if X_train_t.shape[1] != X_test_t.shape[1]:
+        raise RuntimeError(
+            f"{CONTRACT_FAIL_PREFIX}transform width differs train={X_train_t.shape[1]} test={X_test_t.shape[1]}"
+        )
+
     model = get_model_instance(model_cfg["best_model"], model_cfg["parameters"])
     logger.info(f"Training model: {model_cfg['best_model']}")
+
     model.fit(X_train_t, y_train)
+
+    expected = int(X_train_t.shape[1])
+    got = getattr(model, "n_features_in_", expected)
+    if int(got) != expected:
+        raise RuntimeError(
+            f"{CONTRACT_FAIL_PREFIX}model expects {got} but preprocessor emits {expected}"
+        )
 
     y_pred = model.predict(X_test_t)
     mae = float(mean_absolute_error(y_test, y_pred))
@@ -169,9 +191,33 @@ def main(args):
     model_path = os.path.join(trained_dir, "house_price_model.pkl")
     preprocessor_path = os.path.join(trained_dir, "preprocessor.pkl")
 
+    # --- ATOMIC BUNDLE (source of truth) ---
+    bundle_path = os.path.join(trained_dir, "model_bundle.pkl")
+    bundle_tmp = bundle_path + ".tmp"
+
+    try:
+        feature_names = list(preprocessor.get_feature_names_out())
+    except Exception:
+        feature_names = None
+
+    bundle = {
+        "model": model,
+        "preprocessor": preprocessor,
+        "metadata": {
+            "expected_feature_count": int(getattr(model, "n_features_in_", -1)),
+            "feature_names_out": feature_names,
+            "input_columns": list(getattr(preprocessor, "feature_names_in_", [])),
+        },
+    }
+
+    joblib.dump(bundle, bundle_tmp)
+    os.replace(bundle_tmp, bundle_path)
+
+    # canonical artifacts (same in-memory objects, so contract cannot drift)
     joblib.dump(model, model_path)
     joblib.dump(preprocessor, preprocessor_path)
 
+    logger.info(f"Saved model bundle to: {bundle_path}")
     logger.info(f"Saved trained model to: {model_path}")
     logger.info(f"Saved preprocessor to: {preprocessor_path}")
     logger.info(f"Final MAE: {mae:.2f}, R²: {r2:.4f}")
@@ -226,6 +272,7 @@ def main(args):
             f"Target variable: {target}\n"
             f"Trained on dataset: {args.data}\n"
             f"Saved artifacts:\n"
+            f"  - Bundle: {bundle_path}\n"
             f"  - Model: {model_path}\n"
             f"  - Preprocessor: {preprocessor_path}\n"
             f"Performance metrics:\n"
@@ -244,6 +291,7 @@ def main(args):
             )
             client.set_registered_model_tag(model_name, "target_variable", target)
             client.set_registered_model_tag(model_name, "training_dataset", args.data)
+            client.set_registered_model_tag(model_name, "bundle_path", bundle_path)
             client.set_registered_model_tag(model_name, "model_path", model_path)
             client.set_registered_model_tag(model_name, "preprocessor_path", preprocessor_path)
 
