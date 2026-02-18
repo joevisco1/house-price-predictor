@@ -39,4 +39,4 @@ patches:
 
 images:
   - name: docker.io/joevisco/house-pricemodel
-    newTag: sha-ae04857
+    newTag: manual-df015db
