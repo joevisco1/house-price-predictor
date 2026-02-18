@@ -1,0 +1,53 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: model-drift-rules
+  namespace: default
+  labels:
+    release: prom   # REQUIRED by Prometheus ruleSelector
+spec:
+  groups:
+  - name: model.drift.recording
+    rules:
+    - record: model:drift_score:avg15m
+      expr: |
+        avg_over_time(model_drift_score{namespace="model-staging",service="model-preview"}[15m])
+        or on() vector(0)
+
+    - record: model:drift_high_rps:rate5m
+      expr: |
+        sum(rate(model_drift_high_total{namespace="model-staging",service="model-preview"}[5m]))
+        or on() vector(0)
+
+    - record: model:drift_high_ratio:rate5m
+      expr: |
+        (
+          sum(rate(model_drift_high_total{namespace="model-staging",service="model-preview"}[5m]))
+          /
+          clamp_min(
+            sum(rate(http_requests_total{namespace="model-staging",service="model-preview",handler="/predict",status="2xx"}[5m])),
+            1
+          )
+        ) or on() vector(0)
+
+  - name: model.drift.alerts
+    rules:
+    - alert: ModelDriftWarning
+      expr: |
+        avg_over_time(model:drift_high_ratio:rate5m[30m]) > 0.05
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Model drift warning"
+        description: "Drift-high ratio sustained above 5%."
+
+    - alert: ModelDriftTriggered
+      expr: |
+        avg_over_time(model:drift_high_ratio:rate5m[60m]) > 0.15
+      for: 10m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Model drift triggered"
+        description: "Drift-high ratio sustained above 15% (candidate retraining trigger)."

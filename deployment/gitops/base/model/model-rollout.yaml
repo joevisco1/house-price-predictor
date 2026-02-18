@@ -4,24 +4,34 @@ metadata:
   name: model
   labels:
     app: models
+
 spec:
   revisionHistoryLimit: 3
   replicas: 2
+
   selector:
     matchLabels:
       app: model
+
   template:
     metadata:
       labels:
         app: model
+
     spec:
       containers:
         - name: house-pricemodel
           image: docker.io/joevisco/house-pricemodel:sha-INITIAL
           imagePullPolicy: Always
+
+          env:
+            - name: DRIFT_THRESHOLD
+              value: "1.0"
+
           ports:
             - containerPort: 8000
               protocol: TCP
+
           resources:
             limits:
               cpu: 1
@@ -35,7 +45,6 @@ spec:
       activeService: model-active
       previewService: model-preview
       autoPromotionEnabled: false
-
       abortScaleDownDelaySeconds: 60
 
       prePromotionAnalysis:
