@@ -66,15 +66,17 @@ spec:
             }[2m])
           ) or on() vector(0)
     successCondition: len(result) > 0 && (result[0] == 0 || result[0] >= 0.005)
-  - name: drift-high-increase-5m
-    interval: 30s
-    failureLimit: 0
-    provider:
-      prometheus:
-        address: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
-        query: |
+    
+ - name: drift-high-increase-5m
+  count: 1
+  provider:
+    prometheus:
+      address: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
+      query: |
+        sum(
           increase(model_drift_high_total{
             namespace="{{args.namespace}}",
             service="{{args.service}}"
-          }[5m]) or on() vector(0)
-    successCondition: len(result) > 0 && result[0] == 0
+          }[5m])
+        ) or on() vector(0)
+  successCondition: len(result) > 0 && result[0] == 0
