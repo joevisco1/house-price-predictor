@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Literal
 
 from prometheus_client import Counter, Gauge
 
@@ -27,7 +27,6 @@ DRIFT_HIGH_TOTAL = Counter(
     "Count of requests where drift score exceeded threshold.",
 )
 
-# NEW: expose threshold as metric so Prometheus/Grafana knows what logic is used
 DRIFT_HIGH_THRESHOLD = Gauge(
     "model_drift_high_threshold",
     "Threshold used to increment model_drift_high_total.",
@@ -36,6 +35,13 @@ DRIFT_HIGH_THRESHOLD = Gauge(
 BASELINE_LOADED = Gauge(
     "model_drift_baseline_loaded",
     "1 if baseline_stats.json loaded successfully, else 0.",
+)
+
+# Synthetic traffic execution counter
+SYNTH_REQUESTS_TOTAL = Counter(
+    "model_synthetic_requests_total",
+    "Synthetic traffic requests executed (normal/drift) against active/preview, labeled by outcome.",
+    ["service", "kind", "status"],
 )
 
 DRIFT_THRESHOLD = float(os.getenv("DRIFT_THRESHOLD", "3.0"))
@@ -59,21 +65,31 @@ _BASELINE: Dict[str, Any] | None = _safe_load_baseline(BASELINE_PATH)
 BASELINE_LOADED.set(1 if _BASELINE is not None else 0)
 
 
+def record_synth_request(
+    service: str,
+    kind: Literal["normal", "drift"],
+    status: Literal["success", "failure"],
+) -> None:
+    """Increment synthetic-traffic counter with bounded labels."""
+    svc = service.strip()[:64] if service else "unknown"
+    k = kind if kind in ("normal", "drift") else "normal"
+    s = status if status in ("success", "failure") else "failure"
+    SYNTH_REQUESTS_TOTAL.labels(service=svc, kind=k, status=s).inc()
+
+
 def record_drift_metrics(processed_features) -> float:
     """
     Record drift metrics from the output of `preprocessor.transform(...)`.
 
     `processed_features` may be a sparse matrix or dense array. We use the first row.
     """
-
-    # always export active threshold
     DRIFT_HIGH_THRESHOLD.set(DRIFT_THRESHOLD)
 
     if _BASELINE is None:
         DRIFT_SCORE.set(0.0)
         return 0.0
 
-    features = _BASELINE["features"]     # e.g., ["0","1",...]
+    features = _BASELINE["features"]  # e.g., ["0","1",...]
     stats = _BASELINE["baseline"]
 
     row = processed_features[0]

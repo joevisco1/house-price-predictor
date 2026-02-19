@@ -1,19 +1,24 @@
 """
-Simple online drift metric exported to Prometheus.
+Inference + drift metrics exported to Prometheus.
 
-We compute a single scalar drift score as the average absolute z-score across the
-TRANSFORMED feature vector (the exact feature space your model sees).
+- Exposes:
+  - predict_price(payload: dict) -> dict
+  - batch_predict(payloads: list[dict]) -> list[dict]
 
-If baseline stats are missing, we DO NOT crash the API; we expose a metric flag
-`model_drift_baseline_loaded` so you can alert on misconfiguration.
+- Drift:
+  Avg abs z-score across the TRANSFORMED feature vector (the model's feature space).
+
+- Robustness:
+  If baseline stats are missing, we DO NOT crash; we export `model_drift_baseline_loaded`.
 """
 
 from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, List, Tuple
 
+import joblib
 from prometheus_client import Counter, Gauge
 
 # --- Prometheus metrics ---
@@ -27,7 +32,6 @@ DRIFT_HIGH_TOTAL = Counter(
     "Count of requests where drift score exceeded threshold.",
 )
 
-# NEW: expose threshold as metric so Prometheus/Grafana knows what logic is used
 DRIFT_HIGH_THRESHOLD = Gauge(
     "model_drift_high_threshold",
     "Threshold used to increment model_drift_high_total.",
@@ -38,15 +42,13 @@ BASELINE_LOADED = Gauge(
     "1 if baseline_stats.json loaded successfully, else 0.",
 )
 
-# NEW: synthetic traffic execution counter (so you know traffic ran + succeeded/failed)
-SYNTH_REQUESTS_TOTAL = Counter(
-    "model_synthetic_requests_total",
-    "Synthetic traffic requests executed (normal/drift) against active/preview, labeled by outcome.",
-    ["service", "kind", "status"],
-)
-
 DRIFT_THRESHOLD = float(os.getenv("DRIFT_THRESHOLD", "3.0"))
 BASELINE_PATH = os.getenv("BASELINE_PATH", "baseline_stats.json")
+
+# Model artifacts (copied into image at /app/models/trained/*)
+MODEL_DIR = os.getenv("MODEL_DIR", "models/trained")
+PREPROCESSOR_PATH = os.getenv("PREPROCESSOR_PATH", os.path.join(MODEL_DIR, "preprocessor.pkl"))
+MODEL_PATH = os.getenv("MODEL_PATH", os.path.join(MODEL_DIR, "model.pkl"))
 
 
 def _safe_load_baseline(path: str) -> Dict[str, Any] | None:
@@ -66,40 +68,19 @@ _BASELINE: Dict[str, Any] | None = _safe_load_baseline(BASELINE_PATH)
 BASELINE_LOADED.set(1 if _BASELINE is not None else 0)
 
 
-def record_synth_request(
-    service: str,
-    kind: Literal["normal", "drift"],
-    status: Literal["success", "failure"],
-) -> None:
-    """
-    Increment a synthetic-traffic counter.
-
-    Call this from wherever synthetic traffic is executed/handled so Prometheus can
-    show: did the CronJob run, did payload validate, which service failed, etc.
-
-    Example:
-        record_synth_request("model-active", "drift", "success")
-    """
-    # keep labels bounded; avoid unbounded cardinality from typos
-    svc = service.strip()[:64] if service else "unknown"
-    SYNTH_REQUESTS_TOTAL.labels(service=svc, kind=kind, status=status).inc()
-
-
 def record_drift_metrics(processed_features) -> float:
     """
     Record drift metrics from the output of `preprocessor.transform(...)`.
 
     `processed_features` may be a sparse matrix or dense array. We use the first row.
     """
-
-    # always export active threshold
     DRIFT_HIGH_THRESHOLD.set(DRIFT_THRESHOLD)
 
     if _BASELINE is None:
         DRIFT_SCORE.set(0.0)
         return 0.0
 
-    features = _BASELINE["features"]     # e.g., ["0","1",...]
+    features = _BASELINE["features"]  # e.g., ["0","1",...]
     stats = _BASELINE["baseline"]
 
     row = processed_features[0]
@@ -111,7 +92,7 @@ def record_drift_metrics(processed_features) -> float:
     if hasattr(row, "ravel"):
         row = row.ravel()
 
-    zscores = []
+    zscores: List[float] = []
     for i, f in enumerate(features):
         try:
             x = float(row[i])
@@ -128,3 +109,74 @@ def record_drift_metrics(processed_features) -> float:
         DRIFT_HIGH_TOTAL.inc()
 
     return score
+
+
+# --- Lazy-loaded model + preprocessor (cached) ---
+_PREPROCESSOR = None
+_MODEL = None
+
+
+def _load_artifacts() -> Tuple[Any, Any]:
+    """Load preprocessor + model once per process."""
+    global _PREPROCESSOR, _MODEL
+
+    if _PREPROCESSOR is None:
+        if not os.path.exists(PREPROCESSOR_PATH):
+            raise RuntimeError(f"Missing preprocessor artifact: {PREPROCESSOR_PATH}")
+        _PREPROCESSOR = joblib.load(PREPROCESSOR_PATH)
+
+    if _MODEL is None:
+        if not os.path.exists(MODEL_PATH):
+            raise RuntimeError(f"Missing model artifact: {MODEL_PATH}")
+        _MODEL = joblib.load(MODEL_PATH)
+
+    return _PREPROCESSOR, _MODEL
+
+
+def _payload_to_features(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert API payload to model feature dict."""
+    return {
+        "sqft": payload.get("sqft"),
+        "bedrooms": payload.get("bedrooms"),
+        "bathrooms": payload.get("bathrooms"),
+        "location": payload.get("location"),
+        "year_built": payload.get("year_built"),
+        "condition": payload.get("condition"),
+    }
+
+
+def _predict_one(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Core inference for a single payload."""
+    preprocessor, model = _load_artifacts()
+    features = _payload_to_features(payload)
+
+    try:
+        X = preprocessor.transform([features])
+    except Exception as e:
+        raise RuntimeError(f"Preprocess failed: {e}")
+
+    drift_score = record_drift_metrics(X)
+
+    try:
+        y = model.predict(X)
+        pred = float(y[0])
+    except Exception as e:
+        raise RuntimeError(f"Model predict failed: {e}")
+
+    # Return fields that satisfy common schemas.
+    # Keep 'prediction' (your current main.py extractor supports it)
+    # Add 'price' as a harmless alias in case your schema expects it.
+    return {
+        "prediction": pred,
+        "price": pred,
+        "drift_score": drift_score,
+    }
+
+
+# --- Exports expected by /app/main.py ---
+def predict_price(payload: Dict[str, Any]) -> Dict[str, Any]:
+    return _predict_one(payload)
+
+
+def batch_predict(payloads: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [_predict_one(p) for p in payloads]

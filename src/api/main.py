@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Header
 from fastapi.middleware.cors import CORSMiddleware
-
 import os
+from typing import Any
 
 from inference import predict_price, batch_predict
 from schemas import HousePredictionRequest, PredictionResponse
@@ -9,7 +9,6 @@ from schemas import HousePredictionRequest, PredictionResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter, Histogram
 
-# NEW: synthetic traffic metric helper (added in drift.py)
 from drift import record_synth_request
 
 # -------------------------
@@ -38,7 +37,7 @@ app.add_middleware(
 Instrumentator().instrument(app).expose(app)
 
 # -------------------------
-# Drift / model metrics
+# Metrics
 # -------------------------
 model_requests_total = Counter("model_requests_total", "Total prediction requests")
 
@@ -61,25 +60,31 @@ model_prediction_price = Histogram(
     buckets=(0, 100_000, 200_000, 300_000, 400_000, 500_000, 750_000, 1_000_000, 1_250_000, 1_500_000, 2_000_000, 5_000_000),
 )
 
-# NEW: label value for synthetic traffic metric
 # Set SERVICE_NAME in the container env to "model-active" or "model-preview".
 SERVICE_NAME = os.getenv("SERVICE_NAME", "unknown")
 
 
-def _extract_predicted_price(result: PredictionResponse) -> float:
-    """
-    Robust extraction so we don't guess your field name.
-    Common patterns: result.price, result.prediction, result.predicted_price.
-    """
+def _to_dict(pydantic_obj) -> dict:
+    """Support Pydantic v2 (.model_dump) and v1 (.dict)."""
+    if hasattr(pydantic_obj, "model_dump"):
+        return pydantic_obj.model_dump()
+    return pydantic_obj.dict()
+
+
+def _extract_predicted_price(result: Any) -> float:
+    """Extract numeric prediction from dict OR PredictionResponse."""
+    if isinstance(result, dict):
+        for key in ("price", "prediction", "predicted_price"):
+            if key in result and result[key] is not None:
+                return float(result[key])
+        raise KeyError("Result dict missing prediction field (price|prediction|predicted_price).")
+
     for attr in ("price", "prediction", "predicted_price"):
         if hasattr(result, attr):
             val = getattr(result, attr)
             if val is not None:
                 return float(val)
-    raise AttributeError(
-        "PredictionResponse does not have a recognizable price field. "
-        "Expected one of: price, prediction, predicted_price."
-    )
+    raise AttributeError("PredictionResponse missing price/prediction field.")
 
 
 # -------------------------
@@ -96,22 +101,15 @@ async def predict(
     x_synth: str | None = Header(default=None, alias="X-Synth"),
     x_synth_kind: str | None = Header(default=None, alias="X-Synth-Kind"),
 ):
-    """
-    If the CronJob sends:
-      X-Synth: 1
-      X-Synth-Kind: normal|drift
-    then we increment:
-      model_synthetic_requests_total{service,kind,status}
-    """
     is_synth = (x_synth or "").strip() == "1"
     kind = (x_synth_kind or "normal").strip().lower()
     if kind not in ("normal", "drift"):
         kind = "normal"
 
     try:
-        result = predict_price(request)
+        payload = _to_dict(request)
+        result = predict_price(payload)  # returns dict
 
-        # request counter
         model_requests_total.inc()
 
         # numeric features
@@ -127,19 +125,18 @@ async def predict(
         # prediction distribution
         model_prediction_price.observe(_extract_predicted_price(result))
 
-        # NEW: synthetic success metric
         if is_synth:
             record_synth_request(SERVICE_NAME, kind, "success")
 
         return result
 
     except Exception:
-        # NEW: synthetic failure metric (only for exceptions inside the handler)
         if is_synth:
             record_synth_request(SERVICE_NAME, kind, "failure")
         raise
 
 
-@app.post("/batch-predict", response_model=list)
+@app.post("/batch-predict", response_model=list[PredictionResponse])
 async def batch_predict_endpoint(requests: list[HousePredictionRequest]):
-    return batch_predict(requests)
+    payloads = [_to_dict(r) for r in requests]
+    return batch_predict(payloads)
