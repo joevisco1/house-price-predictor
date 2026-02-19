@@ -32,6 +32,6 @@ patches:
     path: patch-rollout-analysis-namespace.yaml
 images:
   - name: docker.io/joevisco/streamlit
-    newTag: manual-5c35dc6
+    newTag: manual-81ddeaf
   - name: docker.io/joevisco/house-pricemodel
-    newTag: manual-5c35dc6
+    newTag: manual-81ddeaf
