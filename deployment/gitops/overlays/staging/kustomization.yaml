@@ -32,6 +32,6 @@ patches:
     path: patch-rollout-analysis-namespace.yaml
 images:
   - name: docker.io/joevisco/streamlit
-    newTag: sha-3acab97
+    newTag: sha-46a5537
   - name: docker.io/joevisco/house-pricemodel
     newTag: sha-bf346d3
