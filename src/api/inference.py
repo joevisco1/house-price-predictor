@@ -20,11 +20,10 @@ import pandas as pd
 from drift import record_drift_metrics  # <-- single source of truth for drift metrics
 
 MODEL_DIR = os.getenv("MODEL_DIR", "models/trained")
-PREPROCESSOR_PATH = os.getenv("PREPROCESSOR_PATH", os.path.join(MODEL_DIR, "preprocessor.pkl"))
 
-# FIX 1: default model artifact name matches the container artifact
-# (still allows override via MODEL_PATH env var)
-MODEL_PATH = os.getenv("MODEL_PATH", os.path.join(MODEL_DIR, "model_bundle.pkl"))
+# Match trained artifact names produced by your retrain workflow / local training output.
+PREPROCESSOR_PATH = os.getenv("PREPROCESSOR_PATH", os.path.join(MODEL_DIR, "preprocessor.pkl"))
+MODEL_PATH = os.getenv("MODEL_PATH", os.path.join(MODEL_DIR, "house_price_model.pkl"))
 
 _PREPROCESSOR = None
 _MODEL = None
@@ -61,7 +60,7 @@ def _predict_one(payload: Dict[str, Any]) -> Dict[str, Any]:
     preprocessor, model = _load_artifacts()
     features = _payload_to_features(payload)
 
-    # FIX 2: preprocessor expects a 2D tabular input with engineered columns
+    # Preprocessor expects 2D tabular input with engineered columns
     df = pd.DataFrame([features])
 
     current_year = datetime.utcnow().year
