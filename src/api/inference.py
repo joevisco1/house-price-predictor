@@ -17,16 +17,49 @@ from typing import Any, Dict, List, Tuple
 import joblib
 import pandas as pd
 
-from drift import record_drift_metrics  # <-- single source of truth for drift metrics
+from drift import record_drift_metrics  # single source of truth for drift metrics
 
 MODEL_DIR = os.getenv("MODEL_DIR", "models/trained")
 
-# Match trained artifact names produced by your retrain workflow / local training output.
-PREPROCESSOR_PATH = os.getenv("PREPROCESSOR_PATH", os.path.join(MODEL_DIR, "preprocessor.pkl"))
-MODEL_PATH = os.getenv("MODEL_PATH", os.path.join(MODEL_DIR, "house_price_model.pkl"))
+# Primary artifacts
+PREPROCESSOR_PATH = os.getenv(
+    "PREPROCESSOR_PATH",
+    os.path.join(MODEL_DIR, "preprocessor.pkl"),
+)
 
-_PREPROCESSOR = None
-_MODEL = None
+# MODEL_PATH may be overridden by env; if not, default to model_bundle.pkl (your newer artifact)
+MODEL_PATH = os.getenv(
+    "MODEL_PATH",
+    os.path.join(MODEL_DIR, "model_bundle.pkl"),
+)
+
+# Fallbacks for older training outputs / naming
+_MODEL_FALLBACKS = [
+    os.path.join(MODEL_DIR, "model_bundle.pkl"),
+    os.path.join(MODEL_DIR, "house_price_model.pkl"),
+    os.path.join(MODEL_DIR, "model.pkl"),
+]
+
+_PREPROCESSOR: Any = None
+_MODEL: Any = None
+
+
+def _resolve_model_path() -> str:
+    # 1) If env/default MODEL_PATH exists, use it.
+    if MODEL_PATH and os.path.exists(MODEL_PATH):
+        return MODEL_PATH
+
+    # 2) Try known fallback filenames.
+    for p in _MODEL_FALLBACKS:
+        if os.path.exists(p):
+            return p
+
+    # 3) Nothing found.
+    tried = [MODEL_PATH] + _MODEL_FALLBACKS
+    tried = [t for t in tried if t]
+    raise RuntimeError(
+        "Missing model artifact. Tried:\n  - " + "\n  - ".join(tried)
+    )
 
 
 def _load_artifacts() -> Tuple[Any, Any]:
@@ -38,9 +71,8 @@ def _load_artifacts() -> Tuple[Any, Any]:
         _PREPROCESSOR = joblib.load(PREPROCESSOR_PATH)
 
     if _MODEL is None:
-        if not os.path.exists(MODEL_PATH):
-            raise RuntimeError(f"Missing model artifact: {MODEL_PATH}")
-        _MODEL = joblib.load(MODEL_PATH)
+        resolved_model_path = _resolve_model_path()
+        _MODEL = joblib.load(resolved_model_path)
 
     return _PREPROCESSOR, _MODEL
 
@@ -66,7 +98,7 @@ def _predict_one(payload: Dict[str, Any]) -> Dict[str, Any]:
     current_year = datetime.utcnow().year
 
     # engineered columns required by the trained preprocessor
-    if "year_built" in df.columns:
+    if "year_built" in df.columns and df["year_built"].notna().all():
         df["house_age"] = current_year - df["year_built"]
     else:
         df["house_age"] = 0
