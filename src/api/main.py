@@ -63,6 +63,13 @@ model_prediction_price = Histogram(
 # Set SERVICE_NAME in the container env to "model-active" or "model-preview".
 SERVICE_NAME = os.getenv("SERVICE_NAME", "unknown")
 
+# Pre-initialize labeled synthetic metric so it appears in /metrics before any traffic.
+from drift import SYNTH_REQUESTS_TOTAL
+for _kind in ("normal", "drift"):
+    for _status in ("success", "failure"):
+        SYNTH_REQUESTS_TOTAL.labels(service=SERVICE_NAME, kind=_kind, status=_status).inc(0)
+
+
 
 def _to_dict(pydantic_obj) -> dict:
     """Support Pydantic v2 (.model_dump) and v1 (.dict)."""
