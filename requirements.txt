@@ -42,3 +42,4 @@ ipykernel==6.29.5
 
 
 prometheus-client==0.20.0
+prometheus-fastapi-instrumentator==6.1.0
