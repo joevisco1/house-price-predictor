@@ -11,15 +11,20 @@ Drift metrics are defined ONLY in drift.py.
 from __future__ import annotations
 
 import os
+from datetime import datetime
 from typing import Any, Dict, List, Tuple
 
 import joblib
+import pandas as pd
 
 from drift import record_drift_metrics  # <-- single source of truth for drift metrics
 
 MODEL_DIR = os.getenv("MODEL_DIR", "models/trained")
 PREPROCESSOR_PATH = os.getenv("PREPROCESSOR_PATH", os.path.join(MODEL_DIR, "preprocessor.pkl"))
-MODEL_PATH = os.getenv("MODEL_PATH", os.path.join(MODEL_DIR, "model.pkl"))
+
+# FIX 1: default model artifact name matches the container artifact
+# (still allows override via MODEL_PATH env var)
+MODEL_PATH = os.getenv("MODEL_PATH", os.path.join(MODEL_DIR, "model_bundle.pkl"))
 
 _PREPROCESSOR = None
 _MODEL = None
@@ -56,7 +61,28 @@ def _predict_one(payload: Dict[str, Any]) -> Dict[str, Any]:
     preprocessor, model = _load_artifacts()
     features = _payload_to_features(payload)
 
-    X = preprocessor.transform([features])
+    # FIX 2: preprocessor expects a 2D tabular input with engineered columns
+    df = pd.DataFrame([features])
+
+    current_year = datetime.utcnow().year
+
+    # engineered columns required by the trained preprocessor
+    if "year_built" in df.columns:
+        df["house_age"] = current_year - df["year_built"]
+    else:
+        df["house_age"] = 0
+
+    # unknown at inference time; keep neutral placeholder
+    df["price_per_sqft"] = 0.0
+
+    # avoid division by zero
+    if "bedrooms" in df.columns and "bathrooms" in df.columns:
+        denom = df["bathrooms"].replace(0, 1)
+        df["bed_bath_ratio"] = df["bedrooms"] / denom
+    else:
+        df["bed_bath_ratio"] = 0.0
+
+    X = preprocessor.transform(df)
 
     # drift computed + exported here (metrics live in drift.py)
     drift_score = record_drift_metrics(X)
