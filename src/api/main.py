@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Header
 from fastapi.middleware.cors import CORSMiddleware
+from datetime import datetime
 import os
 from typing import Any
 
@@ -135,7 +136,15 @@ async def predict(
         if is_synth:
             record_synth_request(SERVICE_NAME, kind, "success")
 
-        return result
+        predicted = _extract_predicted_price(result)
+
+        resp = PredictionResponse(
+            predicted_price=predicted,
+            confidence_interval=[predicted, predicted],
+            features_importance={},
+            prediction_time=datetime.utcnow().isoformat(),
+        )
+        return resp
 
     except Exception:
         if is_synth:
