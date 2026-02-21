@@ -27,6 +27,8 @@ spec:
           env:
             - name: DRIFT_THRESHOLD
               value: "1.0"
+            - name: SERVICE_NAME
+              value: "model"
 
           ports:
             - containerPort: 8000
