@@ -65,14 +65,24 @@ def _resolve_model_path() -> str:
 def _load_artifacts() -> Tuple[Any, Any]:
     global _PREPROCESSOR, _MODEL
 
+    # Load model first because model_bundle.pkl includes BOTH model + preprocessor.
+    if _MODEL is None:
+        resolved_model_path = _resolve_model_path()
+        obj = joblib.load(resolved_model_path)
+
+        # Newer training output: bundle dict with keys: metadata, model, preprocessor
+        if isinstance(obj, dict) and "model" in obj and "preprocessor" in obj:
+            _MODEL = obj["model"]
+            if _PREPROCESSOR is None:
+                _PREPROCESSOR = obj["preprocessor"]
+        else:
+            _MODEL = obj
+
+    # If preprocessor not provided by bundle, load it from its own artifact.
     if _PREPROCESSOR is None:
         if not os.path.exists(PREPROCESSOR_PATH):
             raise RuntimeError(f"Missing preprocessor artifact: {PREPROCESSOR_PATH}")
         _PREPROCESSOR = joblib.load(PREPROCESSOR_PATH)
-
-    if _MODEL is None:
-        resolved_model_path = _resolve_model_path()
-        _MODEL = joblib.load(resolved_model_path)
 
     return _PREPROCESSOR, _MODEL
 
