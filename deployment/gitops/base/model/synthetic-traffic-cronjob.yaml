@@ -27,10 +27,12 @@ spec:
                 - -lc
                 - |
                   set -e
-                  # Hit both active + preview to keep SLO gates exercised
+                  # Hit both active + preview with VALID schema + synth headers
                   for svc in model-active model-preview; do
                     curl -sS -m 2 -X POST "http://${svc}:8000/predict" \
-                      -H 'Content-Type: application/json' \
-                      -d '{"crim":0.1,"zn":0.0,"indus":8.0,"chas":0,"nox":0.5,"rm":6.0,"age":65.0,"dis":4.0,"rad":4.0,"tax":300.0,"ptratio":18.0,"b":390.0,"lstat":12.0}' \
+                      -H "Content-Type: application/json" \
+                      -H "X-Synth: 1" \
+                      -H "X-Synth-Kind: normal" \
+                      -d '{"sqft":1200,"bedrooms":3,"bathrooms":2,"location":"suburban","year_built":2005,"condition":"Good"}' \
                       >/dev/null || true
                   done
