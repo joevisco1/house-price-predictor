@@ -45,6 +45,7 @@ SYNTH_REQUESTS_TOTAL = Counter(
 )
 
 DRIFT_THRESHOLD = float(os.getenv("DRIFT_THRESHOLD", "3.0"))
+DRIFT_HIGH_THRESHOLD.set(DRIFT_THRESHOLD)
 BASELINE_PATH = os.getenv("BASELINE_PATH", "baseline_stats.json")
 
 
