@@ -34,4 +34,4 @@ images:
   - name: docker.io/joevisco/streamlit
     newTag: sha-3acab97
   - name: docker.io/joevisco/house-pricemodel
-    newTag: sha-c758ef9
+    newTag: sha-9346fba
