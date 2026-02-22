@@ -25,7 +25,8 @@ spec:
           imagePullPolicy: Always
 
           env:
-            - .2"
+            - name: DRIFT_THRESHOLD
+              value: "0.2"
             - name: SERVICE_NAME
               value: "model"
 
@@ -66,4 +67,6 @@ spec:
           - name: namespace
             value: PLACEHOLDER_NAMESPACE
           - name: service
+            value: model-active
+          - name: job
             value: model-active
