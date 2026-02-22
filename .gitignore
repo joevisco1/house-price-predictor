@@ -52,3 +52,9 @@ metrics-server/
 # Autoscaling experiments
 deployment/monitoring/autoscaler/
 
+
+# local artifacts
+mlruns/
+mlflow.db
+data/processed/*.csv
+restore_metrics.sh
