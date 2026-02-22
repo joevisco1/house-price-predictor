@@ -2,6 +2,11 @@ name: Retrain and Deploy (Staging)
 
 on:
   workflow_dispatch:
+    inputs:
+      force:
+        type: boolean
+        description: "Force retrain/deploy even if drift is below threshold"
+        default: false
   schedule:
     - cron: "0 3 * * *" # nightly 3am UTC
 
@@ -13,7 +18,45 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  drift_check:
+    runs-on: ubuntu-latest
+    outputs:
+      retrain: ${{ steps.chk.outputs.retrain }}
+      drift_value: ${{ steps.chk.outputs.drift_value }}
+    steps:
+      - name: Check drift in Prometheus
+        id: chk
+        env:
+          PROM_URL: ${{ secrets.PROM_URL }}
+          DRIFT_THRESHOLD: "2000000000"
+        run: |
+          set -euo pipefail
+
+          # Single scalar + traffic-safe (max over all pods)
+          QUERY='max(max_over_time(model_drift_score{namespace="model-staging",service="model-active"}[15m])) or on() vector(0)'
+          echo "Query: ${QUERY}"
+
+          JSON="$(curl -fsS -G "${PROM_URL}/api/v1/query" --data-urlencode "query=${QUERY}")"
+          echo "${JSON}"
+
+          # Extract scalar value (or 0 if no data)
+          VAL="$(echo "${JSON}" | jq -r '.data.result[0].value[1] // "0"')"
+
+          echo "drift_value=${VAL}"
+          echo "drift_value=${VAL}" >> "${GITHUB_OUTPUT}"
+
+          # Compare as float
+          if awk "BEGIN {exit !(${VAL} > ${DRIFT_THRESHOLD})}"; then
+            echo "retrain=true" >> "${GITHUB_OUTPUT}"
+            echo "retrain=true"
+          else
+            echo "retrain=false" >> "${GITHUB_OUTPUT}"
+            echo "retrain=false"
+          fi
+
   retrain_build_deploy:
+    needs: drift_check
+    if: (github.event_name == 'workflow_dispatch' && inputs.force == true) || (needs.drift_check.outputs.retrain == 'true')
     runs-on: ubuntu-latest
 
     steps:
@@ -25,7 +68,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set tag
-        run: echo "TAG=sha-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+        run: echo "TAG=sha-${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -145,7 +188,6 @@ jobs:
                 models/trained/model_bundle.pkl
             ' | tee /tmp/image_artifact_sha256.txt
 
-          # Normalize to: "<sha>  <path>"
           awk '{print $1"  "$2}' models/trained/artifact_sha256.txt | sort > /tmp/ws_sha.txt
           awk '{print $1"  "$2}' /tmp/image_artifact_sha256.txt \
             | grep -E 'models/trained/(house_price_model\.pkl|preprocessor\.pkl|baseline_stats\.json|model_bundle\.pkl)$' \
