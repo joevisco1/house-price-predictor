@@ -34,4 +34,4 @@ images:
   - name: docker.io/joevisco/streamlit
     newTag: 1c4f93c
   - name: docker.io/joevisco/house-pricemodel
-    newTag: driftfix
+    newTag: skfix
