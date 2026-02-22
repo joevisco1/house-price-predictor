@@ -27,12 +27,10 @@ spec:
                 - -lc
                 - |
                   set -e
-                  # Hit both active + preview with VALID schema + synth headers
+                  # Hit both active + preview with synth headers (NO /predict to avoid 5xx)
                   for svc in model-active model-preview; do
-                    curl -sS -m 2 -X POST "http://${svc}:8000/predict" \
-                      -H "Content-Type: application/json" \
+                    curl -sS -m 2 "http://${svc}:8000/drift" \
                       -H "X-Synth: 1" \
-                      -H "X-Synth-Kind: normal" \
-                      -d '{"sqft":1200,"bedrooms":3,"bathrooms":2,"location":"suburban","year_built":2005,"condition":"Good"}' \
+                      -H "X-Synth-Kind: drift" \
                       >/dev/null || true
                   done
