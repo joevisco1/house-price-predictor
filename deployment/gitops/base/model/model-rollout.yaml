@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
         - name: house-pricemodel
-          image: docker.io/joevisco/house-pricemodel:sha-INITIAL
+          image: docker.io/joevisco/house-pricemodel:1c4f93c
           imagePullPolicy: Always
 
           env:
