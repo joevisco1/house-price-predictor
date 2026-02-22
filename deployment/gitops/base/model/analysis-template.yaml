@@ -121,7 +121,7 @@ spec:
                 service="{{args.service}}"
               }
             ) or on() vector(0)
-      successCondition: len(result) > 0 && result[0] <= asFloat(args.driftScoreMax)
+      successCondition: len(result) > 0 && result[0] <= asFloat("{{args.driftScoreMax}}")
 
     # Gauge-safe drift score trend gate over 5m (per-pod delta, then max across pods)
     - name: drift-score-delta-5m
@@ -146,4 +146,4 @@ spec:
                 0
               )
             ) or on() vector(0)
-      successCondition: len(result) > 0 && result[0] <= asFloat(args.driftScoreDeltaMax)
+      successCondition: len(result) > 0 && result[0] <= asFloat("{{args.driftScoreDeltaMax}}")
