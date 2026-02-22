@@ -53,18 +53,29 @@ jobs:
           TAG: ${{ env.TAG }}
         run: |
           set -euo pipefail
+
           docker run --rm \
             -v "${{ github.workspace }}:/work" \
             -w /work \
             docker.io/joevisco/house-pricemodel:${TAG} \
-            sh -lc "set -euo pipefail
+            sh -lc 'set -euo pipefail
               python -V
-              python -c 'import sklearn, numpy, pandas, joblib; print(\"sklearn\", sklearn.__version__); print(\"numpy\", numpy.__version__); print(\"pandas\", pandas.__version__); print(\"joblib\", joblib.__version__)'
+              python -c "import sklearn, numpy, pandas, joblib; print(\"sklearn\", sklearn.__version__); print(\"numpy\", numpy.__version__); print(\"pandas\", pandas.__version__); print(\"joblib\", joblib.__version__)"
+
+              # Generate processed dataset
               python src/data/run_processing.py
-              DATA_FILE=\$(ls -1 data/processed/*.csv | head -n 1)
-              echo Using data file: \${DATA_FILE}
-              python src/models/train_model.py --config configs/model_config.yaml --data \${DATA_FILE} --models-dir models
-            "
+
+              # Pin training data to the schema contract file (deterministic)
+              DATA_FILE=data/processed/cleaned_house_data.csv
+              test -f "${DATA_FILE}"
+              echo "Using data file: ${DATA_FILE}"
+
+              # Train + write artifacts to models/trained/*
+              python src/models/train_model.py \
+                --config configs/model_config.yaml \
+                --data "${DATA_FILE}" \
+                --models-dir models
+            '
 
       # Explicit artifact guard (matches your repo)
       - name: Verify trained artifacts exist
@@ -76,15 +87,18 @@ jobs:
           test -f models/trained/house_price_model.pkl
           test -f models/trained/preprocessor.pkl
           test -f models/trained/baseline_stats.json
+          test -f models/trained/model_bundle.pkl
 
           test -s models/trained/house_price_model.pkl
           test -s models/trained/preprocessor.pkl
           test -s models/trained/baseline_stats.json
+          test -s models/trained/model_bundle.pkl
 
           echo "✅ Found required artifacts:"
           echo " - house_price_model.pkl"
           echo " - preprocessor.pkl"
           echo " - baseline_stats.json"
+          echo " - model_bundle.pkl"
 
       # Provenance: record exact bytes produced by training (workspace)
       - name: Record workspace artifact hashes
@@ -94,6 +108,7 @@ jobs:
             models/trained/house_price_model.pkl \
             models/trained/preprocessor.pkl \
             models/trained/baseline_stats.json \
+            models/trained/model_bundle.pkl \
             | tee models/trained/artifact_sha256.txt
           echo "Workspace artifact hashes:"
           cat models/trained/artifact_sha256.txt
@@ -117,18 +132,23 @@ jobs:
 
           echo "Image contains trained artifacts:"
           docker run --rm docker.io/joevisco/house-pricemodel:${TAG} \
-            sh -lc "set -euo pipefail
+            sh -lc 'set -euo pipefail
               ls -lah models/trained
               test -f models/trained/house_price_model.pkl
               test -f models/trained/preprocessor.pkl
               test -f models/trained/baseline_stats.json
-              sha256sum models/trained/house_price_model.pkl models/trained/preprocessor.pkl models/trained/baseline_stats.json
-            " | tee /tmp/image_artifact_sha256.txt
+              test -f models/trained/model_bundle.pkl
+              sha256sum \
+                models/trained/house_price_model.pkl \
+                models/trained/preprocessor.pkl \
+                models/trained/baseline_stats.json \
+                models/trained/model_bundle.pkl
+            ' | tee /tmp/image_artifact_sha256.txt
 
           # Normalize to: "<sha>  <path>"
           awk '{print $1"  "$2}' models/trained/artifact_sha256.txt | sort > /tmp/ws_sha.txt
           awk '{print $1"  "$2}' /tmp/image_artifact_sha256.txt \
-            | grep -E 'models/trained/(house_price_model\.pkl|preprocessor\.pkl|baseline_stats\.json)$' \
+            | grep -E 'models/trained/(house_price_model\.pkl|preprocessor\.pkl|baseline_stats\.json|model_bundle\.pkl)$' \
             | sort > /tmp/img_sha.txt
 
           diff -u /tmp/ws_sha.txt /tmp/img_sha.txt
