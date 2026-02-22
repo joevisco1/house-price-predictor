@@ -1,3 +1,4 @@
+from typing import Optional
 import streamlit as st
 import requests
 import json
@@ -27,7 +28,7 @@ MODEL_ACTIVE_URL = _base_url(["MODEL_ACTIVE_URL", "MODEL_BASE_URL", "API_URL"], 
 MODEL_PREVIEW_URL = _base_url(["MODEL_PREVIEW_URL"], "http://model-preview:8000")
 
 
-def fetch_drift(base_url: str) -> dict | None:
+def fetch_drift(base_url: str) -> Optional[dict]:
     try:
         r = requests.get(f"{base_url}/drift", timeout=2)
         r.raise_for_status()
