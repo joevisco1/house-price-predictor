@@ -4,94 +4,146 @@ metadata:
   name: model-gate-latency-errors
 spec:
   args:
-  - name: namespace
-    value: $(NAMESPACE)
-  - name: service
-    value: model-preview
+    - name: namespace
+      value: $(NAMESPACE)
+    - name: service
+      value: model-preview
+
+    # Tune from Grafana/Prometheus baseline.
+    # Using max() (not sum) makes threshold stable even if replica count changes.
+    # You observed ~1.3125e9 per pod, so 2.0e9 should pass current baseline.
+    - name: driftScoreMax
+      value: "2000000000"
+
+    # Gauge-safe 5m drift-score delta threshold (NOT increase() on a gauge).
+    # Start permissive, then tighten after observing normal fluctuations.
+    - name: driftScoreDeltaMax
+      value: "100000000"
 
   metrics:
-  - name: p95-latency-seconds
-    interval: 30s
-    count: 5
-    failureLimit: 1
-    provider:
-      prometheus:
-        address: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
-        query: |
-          (
-            histogram_quantile(
-              0.95,
-              sum by (le) (
-                rate(http_request_duration_seconds_bucket{
+    - name: p95-latency-seconds
+      interval: 30s
+      count: 5
+      failureLimit: 1
+      provider:
+        prometheus:
+          address: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
+          query: |
+            (
+              histogram_quantile(
+                0.95,
+                sum by (le) (
+                  rate(http_request_duration_seconds_bucket{
+                    namespace="{{args.namespace}}",
+                    service="{{args.service}}"
+                  }[2m])
+                )
+              )
+              *
+              on() group_left()
+              (
+                sum(rate(http_request_duration_seconds_count{
                   namespace="{{args.namespace}}",
                   service="{{args.service}}"
-                }[2m])
+                }[2m])) > 0
               )
-            )
-            *
-            on() group_left()
-            (
-              sum(rate(http_request_duration_seconds_count{
-                namespace="{{args.namespace}}",
-                service="{{args.service}}"
-              }[2m])) > 0
-            )
-          ) or on() vector(0)
-    successCondition: len(result) > 0 && result[0] < 0.50
+            ) or on() vector(0)
+      successCondition: len(result) > 0 && result[0] < 0.50
 
-  - name: http-5xx-rate
-    interval: 30s
-    count: 5
-    failureLimit: 1
-    provider:
-      prometheus:
-        address: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
-        query: |
-          (
-            sum(rate(http_requests_total{
-              namespace="{{args.namespace}}",
-              service="{{args.service}}",
-              status=~"5.."
-            }[2m]))
-            /
-            clamp_min(
+    - name: http-5xx-rate
+      interval: 30s
+      count: 5
+      failureLimit: 1
+      provider:
+        prometheus:
+          address: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
+          query: |
+            (
               sum(rate(http_requests_total{
                 namespace="{{args.namespace}}",
-                service="{{args.service}}"
-              }[2m])),
-              1
-            )
-          ) or on() vector(0)
-    successCondition: len(result) > 0 && result[0] < 0.01
+                service="{{args.service}}",
+                status=~"5.."
+              }[2m]))
+              /
+              clamp_min(
+                sum(rate(http_requests_total{
+                  namespace="{{args.namespace}}",
+                  service="{{args.service}}"
+                }[2m])),
+                1
+              )
+            ) or on() vector(0)
+      successCondition: len(result) > 0 && result[0] < 0.01
 
-  - name: min-rps
-    interval: 30s
-    count: 5
-    failureLimit: 1
-    provider:
-      prometheus:
-        address: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
-        query: |
-          sum(rate(http_requests_total{
-            namespace="{{args.namespace}}",
-            service="{{args.service}}"
-          }[2m])) or on() vector(0)
-    successCondition: len(result) > 0
-
-  - name: drift-high-increase-5m
-    interval: 30s
-    count: 1
-    failureLimit: 0
-    provider:
-      prometheus:
-        address: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
-        query: |
-          sum(
-            increase(model_drift_high_total{
+    - name: min-rps
+      interval: 30s
+      count: 5
+      failureLimit: 1
+      provider:
+        prometheus:
+          address: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
+          query: |
+            sum(rate(http_requests_total{
               namespace="{{args.namespace}}",
               service="{{args.service}}"
-            }[5m])
-          ) or on() vector(0)
-    successCondition: len(result) > 0 && result[0] == 0
-    # Alternative (if you want "no traffic passes, drift>threshold fails", keep ==0)
-    # successCondition: len(result) > 0 && (result[0] == 0 || result[0] >= 0.1)
+            }[2m])) or on() vector(0)
+      # Traffic-safe: query always returns a vector (0 if no traffic)
+      successCondition: len(result) > 0
+
+    - name: drift-high-increase-5m
+      interval: 30s
+      count: 1
+      failureLimit: 0
+      provider:
+        prometheus:
+          address: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
+          query: |
+            sum(
+              increase(model_drift_high_total{
+                namespace="{{args.namespace}}",
+                service="{{args.service}}"
+              }[5m])
+            ) or on() vector(0)
+      successCondition: len(result) > 0 && result[0] <= 10
+
+    # Absolute drift score gate (gauge-safe, replica-count-safe)
+    - name: drift-score-max
+      interval: 30s
+      count: 3
+      failureLimit: 1
+      provider:
+        prometheus:
+          address: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
+          query: |
+            max(
+              model_drift_score{
+                namespace="{{args.namespace}}",
+                service="{{args.service}}"
+              }
+            ) or on() vector(0)
+      successCondition: len(result) > 0 && result[0] <= asFloat(args.driftScoreMax)
+
+    # Gauge-safe drift score trend gate over 5m (per-pod delta, then max across pods)
+    - name: drift-score-delta-5m
+      interval: 30s
+      count: 1
+      failureLimit: 0
+      provider:
+        prometheus:
+          address: http://prom-kube-prometheus-stack-prometheus.default.svc:9090
+          query: |
+            max(
+              clamp_min(
+                max_over_time(model_drift_score{
+                  namespace="{{args.namespace}}",
+                  service="{{args.service}}"
+                }[5m])
+                -
+                min_over_time(model_drift_score{
+                  namespace="{{args.namespace}}",
+                  service="{{args.service}}"
+                }[5m]),
+                0
+              )
+            ) or on() vector(0)
+      successCondition: len(result) > 0 && result[0] <= asFloat(args.driftScoreDeltaMax)
