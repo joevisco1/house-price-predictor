@@ -10,7 +10,7 @@ from schemas import HousePredictionRequest, PredictionResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter, Histogram
 
-from drift import record_synth_request
+from drift import record_synth_request, get_drift_snapshot
 
 # -------------------------
 # FastAPI app
@@ -58,7 +58,20 @@ model_feature_categorical_total = Counter(
 model_prediction_price = Histogram(
     "model_prediction_price",
     "Predicted price distribution",
-    buckets=(0, 100_000, 200_000, 300_000, 400_000, 500_000, 750_000, 1_000_000, 1_250_000, 1_500_000, 2_000_000, 5_000_000),
+    buckets=(
+        0,
+        100_000,
+        200_000,
+        300_000,
+        400_000,
+        500_000,
+        750_000,
+        1_000_000,
+        1_250_000,
+        1_500_000,
+        2_000_000,
+        5_000_000,
+    ),
 )
 
 # Set SERVICE_NAME in the container env to "model-active" or "model-preview".
@@ -66,10 +79,10 @@ SERVICE_NAME = os.getenv("SERVICE_NAME", "unknown")
 
 # Pre-initialize labeled synthetic metric so it appears in /metrics before any traffic.
 from drift import SYNTH_REQUESTS_TOTAL
+
 for _kind in ("normal", "drift"):
     for _status in ("success", "failure"):
         SYNTH_REQUESTS_TOTAL.labels(service=SERVICE_NAME, kind=_kind, status=_status).inc(0)
-
 
 
 def _to_dict(pydantic_obj) -> dict:
@@ -101,6 +114,15 @@ def _extract_predicted_price(result: Any) -> float:
 @app.get("/health", response_model=dict)
 async def health_check():
     return {"status": "healthy", "model_loaded": True}
+
+
+@app.get("/drift", response_model=dict)
+async def drift_status():
+    """
+    JSON drift snapshot for Streamlit/UI.
+    Reads in-process Prometheus metric values (no scraping).
+    """
+    return get_drift_snapshot()
 
 
 @app.post("/predict", response_model=PredictionResponse)

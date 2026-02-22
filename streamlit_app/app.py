@@ -12,6 +12,30 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# -------------------------
+# Helpers
+# -------------------------
+def _base_url(env_var_names: list[str], default: str) -> str:
+    for n in env_var_names:
+        v = os.getenv(n)
+        if v and v.strip():
+            return v.strip().rstrip("/")
+    return default.rstrip("/")
+
+
+MODEL_ACTIVE_URL = _base_url(["MODEL_ACTIVE_URL", "MODEL_BASE_URL", "API_URL"], "http://model-active:8000")
+MODEL_PREVIEW_URL = _base_url(["MODEL_PREVIEW_URL"], "http://model-preview:8000")
+
+
+def fetch_drift(base_url: str) -> dict | None:
+    try:
+        r = requests.get(f"{base_url}/drift", timeout=2)
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        return None
+
+
 # Add title and description
 st.title("House Price Prediction - v2   🚀")
 st.markdown(
@@ -22,6 +46,44 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+# -------------------------
+# Drift panel (Active / Preview)
+# -------------------------
+st.markdown("## Drift (Active vs Preview)")
+dcol1, dcol2, dcol3 = st.columns([1, 1, 0.35], gap="large")
+
+with dcol3:
+    if st.button("Refresh drift", use_container_width=True):
+        st.rerun()
+
+with dcol1:
+    st.markdown("### Active")
+    d = fetch_drift(MODEL_ACTIVE_URL)
+    if d:
+        st.metric("Drift Score", f'{float(d.get("drift_score", 0.0)):.6f}')
+        st.metric("Threshold", f'{float(d.get("drift_threshold", 0.0)):.6f}')
+        st.metric("High Total", f'{int(float(d.get("drift_high_total", 0.0)))}')
+        st.metric("Baseline Loaded", "Yes" if float(d.get("baseline_loaded", 0.0)) >= 1 else "No")
+        st.caption(f"Source: {MODEL_ACTIVE_URL}/drift")
+    else:
+        st.warning("Active drift unavailable")
+        st.caption(f"Source: {MODEL_ACTIVE_URL}/drift")
+
+with dcol2:
+    st.markdown("### Preview")
+    d = fetch_drift(MODEL_PREVIEW_URL)
+    if d:
+        st.metric("Drift Score", f'{float(d.get("drift_score", 0.0)):.6f}')
+        st.metric("Threshold", f'{float(d.get("drift_threshold", 0.0)):.6f}')
+        st.metric("High Total", f'{int(float(d.get("drift_high_total", 0.0)))}')
+        st.metric("Baseline Loaded", "Yes" if float(d.get("baseline_loaded", 0.0)) >= 1 else "No")
+        st.caption(f"Source: {MODEL_PREVIEW_URL}/drift")
+    else:
+        st.warning("Preview drift unavailable")
+        st.caption(f"Source: {MODEL_PREVIEW_URL}/drift")
+
+st.markdown("---")
 
 # Create a two-column layout
 col1, col2 = st.columns(2, gap="large")
@@ -91,7 +153,7 @@ with col2:
 
             try:
                 # Get API endpoint from environment variable or use default
-                api_endpoint = (os.getenv("MODEL_BASE_URL") or os.getenv("API_URL") or "http://model-active:8000").rstrip("/")
+                api_endpoint = MODEL_ACTIVE_URL.rstrip("/")
                 predict_url = f"{api_endpoint.rstrip('/')}/predict"
 
                 st.write(f"Connecting to API at: {predict_url}")
@@ -187,7 +249,7 @@ ip_address = socket.gethostbyname(hostname)
 st.markdown("<hr>", unsafe_allow_html=True)  # Add a horizontal line for separation
 st.markdown(
     f"""
-    <div style="text-align: center; color: gray; margin-top: 20px;">
+    <div style="text-align: center; color: gray; margin-tosp: 20px;">
         <p><strong>Version:</strong> {version}</p>
         <p><strong>Hostname:</strong> {hostname}</p>
         <p><strong>IP Address:</strong> {ip_address}</p>

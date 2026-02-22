@@ -118,3 +118,38 @@ def record_drift_metrics(processed_features) -> float:
         DRIFT_HIGH_TOTAL.inc()
 
     return score
+
+
+def get_drift_snapshot() -> Dict[str, float]:
+    """
+    Small JSON-friendly snapshot for UI/debug.
+
+    Note: prometheus_client does not provide a public read API for metric values,
+    so we read the underlying value holders.
+    """
+    try:
+        score = float(DRIFT_SCORE._value.get())  # type: ignore[attr-defined]
+    except Exception:
+        score = 0.0
+
+    try:
+        threshold = float(DRIFT_HIGH_THRESHOLD._value.get())  # type: ignore[attr-defined]
+    except Exception:
+        threshold = float(DRIFT_THRESHOLD)
+
+    try:
+        baseline_loaded = float(BASELINE_LOADED._value.get())  # type: ignore[attr-defined]
+    except Exception:
+        baseline_loaded = 0.0
+
+    try:
+        high_total = float(DRIFT_HIGH_TOTAL._value.get())  # type: ignore[attr-defined]
+    except Exception:
+        high_total = 0.0
+
+    return {
+        "drift_score": score,
+        "drift_threshold": threshold,
+        "drift_high_total": high_total,
+        "baseline_loaded": baseline_loaded,
+    }
