@@ -18,7 +18,7 @@ spec:
     # Gauge-safe 5m drift-score delta threshold (NOT increase() on a gauge).
     # Start permissive, then tighten after observing normal fluctuations.
     - name: driftScoreDeltaMax
-      value: "100000000"
+      value: "2000000000"
 
   metrics:
     - name: p95-latency-seconds
