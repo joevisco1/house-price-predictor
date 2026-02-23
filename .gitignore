@@ -8,6 +8,7 @@ venv/
 venv311
 .env/
 .envrc
+.venv
 
 # Ignore Jupyter Notebook checkpoints
 .ipynb_checkpoints/

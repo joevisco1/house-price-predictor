@@ -28,7 +28,7 @@ jobs:
         id: chk
         env:
           PROM_URL: ${{ secrets.PROM_URL }}
-          DRIFT_THRESHOLD: "2000000000"
+          DRIFT_THRESHOLD: "1.5"
         run: |
           set -euo pipefail
 
