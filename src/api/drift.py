@@ -112,7 +112,13 @@ def record_drift_metrics(processed_features) -> float:
         except Exception:
             continue
 
-    score = sum(zscores) / len(zscores) if zscores else 0.0
+        # Make score responsive: mean of top-K z-scores (dramatic, still stable)
+    if not zscores:
+        score = 0.0
+    else:
+        zscores.sort(reverse=True)
+        k = min(25, len(zscores))  # top 25 features
+        score = sum(zscores[:k]) / float(k)
     DRIFT_SCORE.set(score)
 
     if score >= DRIFT_THRESHOLD:
