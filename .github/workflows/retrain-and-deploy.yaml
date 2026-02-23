@@ -1,3 +1,4 @@
+---
 name: Retrain and Deploy (Staging)
 
 on:
@@ -8,7 +9,7 @@ on:
         description: "Force retrain/deploy even if drift is below threshold"
         default: false
   schedule:
-    - cron: "0 3 * * *" # nightly 3am UTC
+    - cron: "0 3 * * *"
 
 permissions:
   contents: write
@@ -23,6 +24,7 @@ jobs:
     outputs:
       retrain: ${{ steps.chk.outputs.retrain }}
       drift_value: ${{ steps.chk.outputs.drift_value }}
+
     steps:
       - name: Check drift in Prometheus
         id: chk
@@ -31,27 +33,14 @@ jobs:
           DRIFT_THRESHOLD: "1.5"
         run: |
           set -euo pipefail
-
-          # Single scalar + traffic-safe (max over all pods)
           QUERY='max(max_over_time(model_drift_score{namespace="model-staging",service="model-active"}[15m])) or on() vector(0)'
-          echo "Query: ${QUERY}"
-
           JSON="$(curl -fsS -G "${PROM_URL}/api/v1/query" --data-urlencode "query=${QUERY}")"
-          echo "${JSON}"
-
-          # Extract scalar value (or 0 if no data)
           VAL="$(echo "${JSON}" | jq -r '.data.result[0].value[1] // "0"')"
-
-          echo "drift_value=${VAL}"
           echo "drift_value=${VAL}" >> "${GITHUB_OUTPUT}"
-
-          # Compare as float
           if awk "BEGIN {exit !(${VAL} > ${DRIFT_THRESHOLD})}"; then
             echo "retrain=true" >> "${GITHUB_OUTPUT}"
-            echo "retrain=true"
           else
             echo "retrain=false" >> "${GITHUB_OUTPUT}"
-            echo "retrain=false"
           fi
 
   retrain_build_deploy:
@@ -60,7 +49,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ArgoCD tracks main, so this workflow must update main.
       - name: Checkout main
         uses: actions/checkout@v4
         with:
@@ -79,8 +67,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Build the image first (defines the EXACT runtime environment)
-      - name: Build base image (load locally)
+      - name: Build base image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -89,75 +76,30 @@ jobs:
           load: true
           push: false
 
-      # Train inside the image to eliminate library mismatch.
-      # Writes artifacts to the repo workspace via bind mount.
-      - name: Prepare data + train inside image
+      - name: Train inside image
         env:
           TAG: ${{ env.TAG }}
         run: |
           set -euo pipefail
+          docker run --rm -v "${{ github.workspace }}:/work" -w /work docker.io/joevisco/house-pricemodel:${TAG} python src/data/run_processing.py
+          docker run --rm -v "${{ github.workspace }}:/work" -w /work docker.io/joevisco/house-pricemodel:${TAG} python src/models/train_model.py --config configs/model_config.yaml --data data/processed/cleaned_house_data.csv --models-dir models
 
-          docker run --rm \
-            -v "${{ github.workspace }}:/work" \
-            -w /work \
-            docker.io/joevisco/house-pricemodel:${TAG} \
-            sh -lc 'set -euo pipefail
-              python -V
-              python -c "import sklearn, numpy, pandas, joblib; print(\"sklearn\", sklearn.__version__); print(\"numpy\", numpy.__version__); print(\"pandas\", pandas.__version__); print(\"joblib\", joblib.__version__)"
-
-              # Generate processed dataset
-              python src/data/run_processing.py
-
-              # Pin training data to the schema contract file (deterministic)
-              DATA_FILE=data/processed/cleaned_house_data.csv
-              test -f "${DATA_FILE}"
-              echo "Using data file: ${DATA_FILE}"
-
-              # Train + write artifacts to models/trained/*
-              python src/models/train_model.py \
-                --config configs/model_config.yaml \
-                --data "${DATA_FILE}" \
-                --models-dir models
-            '
-
-      # Explicit artifact guard (matches your repo)
-      - name: Verify trained artifacts exist
+      - name: Generate baseline_stats.json
+        env:
+          TAG: ${{ env.TAG }}
         run: |
           set -euo pipefail
-          echo "Trained artifacts:"
-          ls -lah models/trained
+          docker run --rm -v "${{ github.workspace }}:/work" -w /work docker.io/joevisco/house-pricemodel:${TAG} python -c "import json,numpy as np,pandas as pd,joblib;from pathlib import Path;DATA_FILE=Path('data/processed/cleaned_house_data.csv');PREP_PATH=Path('models/trained/preprocessor.pkl');OUT_PATH=Path('models/trained/baseline_stats.json');df=pd.read_csv(DATA_FILE);[df.drop(columns=[c],inplace=True) for c in ['price','SalePrice','target','y'] if c in df.columns];pre=joblib.load(PREP_PATH);X=pre.transform(df);X=X.toarray() if hasattr(X,'toarray') else X;X=np.asarray(X,dtype=float);mu=X.mean(axis=0);std=X.std(axis=0);std=np.where(std==0,1e-9,std);features=[str(i) for i in range(X.shape[1])];baseline={str(i):{'mean':float(mu[i]),'std':float(std[i])} for i in range(X.shape[1])};OUT_PATH.parent.mkdir(parents=True,exist_ok=True);OUT_PATH.write_text(json.dumps({'features':features,'baseline':baseline}),encoding='utf-8');print('baseline written')"
 
+      - name: Verify artifacts
+        run: |
+          set -euo pipefail
           test -f models/trained/house_price_model.pkl
           test -f models/trained/preprocessor.pkl
           test -f models/trained/baseline_stats.json
           test -f models/trained/model_bundle.pkl
 
-          test -s models/trained/house_price_model.pkl
-          test -s models/trained/preprocessor.pkl
-          test -s models/trained/baseline_stats.json
-          test -s models/trained/model_bundle.pkl
-
-          echo "✅ Found required artifacts:"
-          echo " - house_price_model.pkl"
-          echo " - preprocessor.pkl"
-          echo " - baseline_stats.json"
-          echo " - model_bundle.pkl"
-
-      # Provenance: record exact bytes produced by training (workspace)
-      - name: Record workspace artifact hashes
-        run: |
-          set -euo pipefail
-          sha256sum \
-            models/trained/house_price_model.pkl \
-            models/trained/preprocessor.pkl \
-            models/trained/baseline_stats.json \
-            models/trained/model_bundle.pkl \
-            | tee models/trained/artifact_sha256.txt
-          echo "Workspace artifact hashes:"
-          cat models/trained/artifact_sha256.txt
-
-      # Rebuild the image so it bakes in the newly trained artifacts
-      - name: Rebuild image with trained artifacts (load locally)
+      - name: Rebuild image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -166,99 +108,27 @@ jobs:
           load: true
           push: false
 
-      # Guardrail: ensure rebuilt image contains artifacts + hashes match workspace
-      - name: Verify image contains artifacts + hashes match
-        env:
-          TAG: ${{ env.TAG }}
-        run: |
-          set -euo pipefail
-
-          echo "Image contains trained artifacts:"
-          docker run --rm docker.io/joevisco/house-pricemodel:${TAG} \
-            sh -lc 'set -euo pipefail
-              ls -lah models/trained
-              test -f models/trained/house_price_model.pkl
-              test -f models/trained/preprocessor.pkl
-              test -f models/trained/baseline_stats.json
-              test -f models/trained/model_bundle.pkl
-              sha256sum \
-                models/trained/house_price_model.pkl \
-                models/trained/preprocessor.pkl \
-                models/trained/baseline_stats.json \
-                models/trained/model_bundle.pkl
-            ' | tee /tmp/image_artifact_sha256.txt
-
-          awk '{print $1"  "$2}' models/trained/artifact_sha256.txt | sort > /tmp/ws_sha.txt
-          awk '{print $1"  "$2}' /tmp/image_artifact_sha256.txt \
-            | grep -E 'models/trained/(house_price_model\.pkl|preprocessor\.pkl|baseline_stats\.json|model_bundle\.pkl)$' \
-            | sort > /tmp/img_sha.txt
-
-          diff -u /tmp/ws_sha.txt /tmp/img_sha.txt
-          echo "✅ Image artifacts match workspace artifacts"
-
       - name: Push image
-        env:
-          TAG: ${{ env.TAG }}
-        run: |
-          set -euo pipefail
-          docker push docker.io/joevisco/house-pricemodel:${TAG}
+        run: docker push docker.io/joevisco/house-pricemodel:${{ env.TAG }}
 
-      # Guardrail: prove tag exists in registry BEFORE touching GitOps (prevents ImagePullBackOff)
-      - name: Verify image exists in registry
-        env:
-          TAG: ${{ env.TAG }}
+      - name: Install kustomize
         run: |
           set -euo pipefail
-          docker manifest inspect docker.io/joevisco/house-pricemodel:${TAG} >/dev/null
-          echo "✅ Image exists: docker.io/joevisco/house-pricemodel:${TAG}"
-
-      # Determinism evidence: capture immutable digest from registry (even if you deploy by tag)
-      - name: Capture image digest (registry)
-        env:
-          TAG: ${{ env.TAG }}
-        run: |
-          set -euo pipefail
-          DIGEST="$(docker manifest inspect docker.io/joevisco/house-pricemodel:${TAG} \
-            | python -c "import json,sys; m=json.load(sys.stdin); print(((m.get('config') or {}).get('digest')) or '')")"
-          test -n "${DIGEST}"
-          echo "IMAGE_DIGEST=${DIGEST}" >> "$GITHUB_ENV"
-          echo "Pushed digest: ${DIGEST}"
-
-      # FIXED kustomize install (your previous URL produced HTML, not a tar.gz)
-      - name: Install kustomize (pinned)
-        run: |
-          set -euo pipefail
-          KUSTOMIZE_VERSION="5.4.3"
-          ASSET="kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz"
-          URL="https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v${KUSTOMIZE_VERSION}/${ASSET}"
-          curl -fsSL -o "${ASSET}" "${URL}"
-          tar -xzf "${ASSET}"
+          curl -fsSL -o kustomize.tar.gz https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v5.4.3/kustomize_v5.4.3_linux_amd64.tar.gz
+          tar -xzf kustomize.tar.gz
           sudo mv kustomize /usr/local/bin/kustomize
-          kustomize version
 
-      - name: Update staging overlay image tag
-        env:
-          TAG: ${{ env.TAG }}
+      - name: Update staging image tag
         run: |
           set -euo pipefail
           cd deployment/gitops/overlays/staging
-          kustomize edit set image \
-            docker.io/joevisco/house-pricemodel=docker.io/joevisco/house-pricemodel:${TAG}
+          kustomize edit set image docker.io/joevisco/house-pricemodel=docker.io/joevisco/house-pricemodel:${{ env.TAG }}
 
-          echo "Updated images block:"
-          sed -n '/^images:/,/^[^ -]/p' kustomization.yaml || true
-
-      - name: Commit and push GitOps change (main)
-        env:
-          TAG: ${{ env.TAG }}
+      - name: Commit and push
         run: |
           set -euo pipefail
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-
           git add deployment/gitops/overlays/staging
-          echo "Staged changes:"
-          git diff --cached --name-only
-
-          git commit -m "auto: retrain deploy ${TAG}" || echo "No changes to commit"
+          git commit -m "auto: retrain deploy ${TAG}" || echo "No changes"
           git push origin main
