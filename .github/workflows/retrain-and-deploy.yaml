@@ -89,7 +89,33 @@ jobs:
           TAG: ${{ env.TAG }}
         run: |
           set -euo pipefail
-          docker run --rm -v "${{ github.workspace }}:/work" -w /work docker.io/joevisco/house-pricemodel:${TAG} python -c "import json,numpy as np,pandas as pd,joblib;from pathlib import Path;DATA_FILE=Path('data/processed/cleaned_house_data.csv');PREP_PATH=Path('models/trained/preprocessor.pkl');OUT_PATH=Path('models/trained/baseline_stats.json');df=pd.read_csv(DATA_FILE);[df.drop(columns=[c],inplace=True) for c in ['price','SalePrice','target','y'] if c in df.columns];pre=joblib.load(PREP_PATH);X=pre.transform(df);X=X.toarray() if hasattr(X,'toarray') else X;X=np.asarray(X,dtype=float);mu=X.mean(axis=0);std=X.std(axis=0);std=np.where(std==0,1e-9,std);features=[str(i) for i in range(X.shape[1])];baseline={str(i):{'mean':float(mu[i]),'std':float(std[i])} for i in range(X.shape[1])};OUT_PATH.parent.mkdir(parents=True,exist_ok=True);OUT_PATH.write_text(json.dumps({'features':features,'baseline':baseline}),encoding='utf-8');print('baseline written')"
+          docker run --rm -v "${{ github.workspace }}:/work" -w /work docker.io/joevisco/house-pricemodel:${TAG} python - <<'PY'
+          import json, numpy as np
+          from pathlib import Path
+
+          X_PATH = Path("models/trained/X_train.npy")
+          OUT_PATH = Path("models/trained/baseline_stats.json")
+
+          X = np.load(X_PATH)
+          X = np.asarray(X, dtype=float)
+
+          mu = X.mean(axis=0)
+          std = X.std(axis=0)
+          std = np.where(std == 0, 1e-9, std)
+
+          features = [str(i) for i in range(X.shape[1])]
+          baseline = {
+              str(i): {"mean": float(mu[i]), "std": float(std[i])}
+              for i in range(X.shape[1])
+          }
+
+          OUT_PATH.write_text(
+              json.dumps({"features": features, "baseline": baseline}),
+              encoding="utf-8",
+          )
+
+          print("baseline written")
+          PY
 
       - name: Verify artifacts
         run: |
